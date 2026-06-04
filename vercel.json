@@ -1,10 +1,4 @@
 {
-  "crons": [
-    { "path": "/api/cron/sync-proposals", "schedule": "*/5 * * * *" },
-    { "path": "/api/cron/sync-votes", "schedule": "*/5 * * * *" },
-    { "path": "/api/cron/generate-summaries", "schedule": "*/10 * * * *" },
-    { "path": "/api/cron/compute-scores", "schedule": "0 2 * * *" },
-    { "path": "/api/cron/send-digest", "schedule": "0 8 * * 1" },
-    { "path": "/api/cron/sync-treasuries", "schedule": "0 3 * * *" }
-  ]
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "_comment": "Cron schedules moved to GitHub Actions (.github/workflows/cron.yml) — Vercel Hobby plan limits crons to once per day."
 }

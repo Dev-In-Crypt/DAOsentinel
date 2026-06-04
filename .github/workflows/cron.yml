@@ -1,0 +1,96 @@
+name: Cron
+
+on:
+  schedule:
+    # Snapshot syncs (proposals + votes + whale detection) — every 5 min
+    - cron: '*/5 * * * *'
+    # AI summaries — every 15 min (Gemini is fast but we batch to save tokens)
+    - cron: '*/15 * * * *'
+    # Democracy Score recompute — daily at 02:00 UTC
+    - cron: '0 2 * * *'
+    # DeFiLlama treasury refresh — daily at 03:00 UTC
+    - cron: '0 3 * * *'
+    # Weekly digest — Monday 08:00 UTC
+    - cron: '0 8 * * 1'
+
+  # Allow manual triggering from the Actions tab
+  workflow_dispatch:
+    inputs:
+      job:
+        description: 'Which job to run'
+        required: true
+        default: sync-proposals
+        type: choice
+        options:
+          - sync-proposals
+          - sync-votes
+          - generate-summaries
+          - compute-scores
+          - sync-treasuries
+          - send-digest
+
+concurrency:
+  group: cron-${{ github.event.schedule || github.event.inputs.job }}
+  cancel-in-progress: false
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Resolve endpoints for this trigger
+        id: plan
+        run: |
+          SCHED="${{ github.event.schedule }}"
+          MANUAL="${{ github.event.inputs.job }}"
+
+          case "$SCHED" in
+            "*/5 * * * *")
+              echo "endpoints=sync-proposals,sync-votes" >> $GITHUB_OUTPUT
+              ;;
+            "*/15 * * * *")
+              echo "endpoints=generate-summaries" >> $GITHUB_OUTPUT
+              ;;
+            "0 2 * * *")
+              echo "endpoints=compute-scores" >> $GITHUB_OUTPUT
+              ;;
+            "0 3 * * *")
+              echo "endpoints=sync-treasuries" >> $GITHUB_OUTPUT
+              ;;
+            "0 8 * * 1")
+              echo "endpoints=send-digest" >> $GITHUB_OUTPUT
+              ;;
+            *)
+              echo "endpoints=$MANUAL" >> $GITHUB_OUTPUT
+              ;;
+          esac
+
+      - name: Hit /api/cron endpoints
+        env:
+          APP_URL: ${{ secrets.APP_URL }}
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+        run: |
+          if [ -z "$APP_URL" ]; then
+            echo "::error::APP_URL secret missing. Set it in repo Settings → Secrets → Actions."
+            exit 1
+          fi
+          if [ -z "$CRON_SECRET" ]; then
+            echo "::error::CRON_SECRET secret missing."
+            exit 1
+          fi
+
+          IFS=',' read -ra JOBS <<< "${{ steps.plan.outputs.endpoints }}"
+          for job in "${JOBS[@]}"; do
+            url="$APP_URL/api/cron/$job"
+            echo "→ POST $url"
+            code=$(curl -s -o /tmp/body.json -w "%{http_code}" \
+              -H "Authorization: Bearer $CRON_SECRET" \
+              --max-time 240 \
+              "$url" || echo "000")
+            echo "← HTTP $code"
+            cat /tmp/body.json || true
+            echo ""
+            if [ "$code" != "200" ]; then
+              echo "::warning::$job returned $code"
+            fi
+          done
