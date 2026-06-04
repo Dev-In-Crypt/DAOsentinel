@@ -12,6 +12,8 @@ on:
     - cron: '0 3 * * *'
     # Weekly digest — Monday 08:00 UTC
     - cron: '0 8 * * 1'
+    # Delegate profiles rebuild — daily at 04:00 UTC
+    - cron: '0 4 * * *'
 
   # Allow manual triggering from the Actions tab
   workflow_dispatch:
@@ -28,6 +30,7 @@ on:
           - compute-scores
           - sync-treasuries
           - send-digest
+          - rebuild-delegates
 
 concurrency:
   group: cron-${{ github.event.schedule || github.event.inputs.job }}
@@ -59,6 +62,9 @@ jobs:
               ;;
             "0 8 * * 1")
               echo "endpoints=send-digest" >> $GITHUB_OUTPUT
+              ;;
+            "0 4 * * *")
+              echo "endpoints=rebuild-delegates" >> $GITHUB_OUTPUT
               ;;
             *)
               echo "endpoints=$MANUAL" >> $GITHUB_OUTPUT
