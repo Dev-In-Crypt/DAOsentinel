@@ -1,4 +1,4 @@
-# GovWatch
+# DAO Sentinel
 
 > The public governance watchdog for DAOs. Every proposal explained in plain English. Every whale vote exposed. Every manipulation detected.
 

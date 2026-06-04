@@ -28,21 +28,21 @@ export default function WeeklyDigestEmail({ title, markdownBody, weekOf }: Weekl
       <Preview>{title}</Preview>
       <Body style={body}>
         <Container style={container}>
-          <Heading style={h1}>GovWatch Weekly</Heading>
+          <Heading style={h1}>DAO Sentinel Weekly</Heading>
           <Text style={muted}>Week of {weekOf}</Text>
           <Section style={card}>
             <pre style={pre}>{markdownBody}</pre>
           </Section>
           <Text style={muted}>
             Read the web version with charts at{' '}
-            <Link href="https://govwatch.xyz/digest" style={link}>
-              govwatch.xyz/digest
+            <Link href="https://daosentinel.xyz/digest" style={link}>
+              daosentinel.xyz/digest
             </Link>
             .
           </Text>
           <Text style={muted}>
             Don't want these?{' '}
-            <Link href="https://govwatch.xyz/unsubscribe" style={link}>
+            <Link href="https://daosentinel.xyz/unsubscribe" style={link}>
               Unsubscribe
             </Link>
             .

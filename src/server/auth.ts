@@ -18,7 +18,7 @@ export const { auth, handlers, signIn, signOut } = NextAuth({
   providers: [
     Resend({
       apiKey: process.env.RESEND_API_KEY,
-      from: process.env.EMAIL_FROM ?? 'GovWatch <noreply@govwatch.xyz>',
+      from: process.env.EMAIL_FROM ?? 'DAO Sentinel <noreply@daosentinel.xyz>',
       async sendVerificationRequest({ identifier: email, url, provider }) {
         const host = new URL(url).host;
         const html = await renderMagicLink({ url, host });

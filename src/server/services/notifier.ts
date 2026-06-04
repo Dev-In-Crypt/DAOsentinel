@@ -60,7 +60,7 @@ export async function publishAlert(alertId: string): Promise<void> {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({
-          username: 'GovWatch',
+          username: 'DAO Sentinel',
           content: `**${alert.title}**\n${alert.description}`,
         }),
       });
@@ -81,5 +81,5 @@ async function sendTelegram(chatId: string, text: string) {
 export function formatAlertForTelegram(alert: Alert, dao: Dao): string {
   const data = (alert.data ?? {}) as Record<string, unknown>;
   const voter = typeof data.voter === 'string' ? shortenAddress(data.voter) : '';
-  return `*${alert.title}*\n${alert.description}${voter ? `\nVoter: \`${voter}\`` : ''}\n[Open ${dao.name} on GovWatch](https://govwatch.xyz/daos/${dao.slug})`;
+  return `*${alert.title}*\n${alert.description}${voter ? `\nVoter: \`${voter}\`` : ''}\n[Open ${dao.name} on DAO Sentinel](https://daosentinel.xyz/daos/${dao.slug})`;
 }

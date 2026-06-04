@@ -53,7 +53,7 @@ export default async function SettingsPage() {
       <Card>
         <CardHeader>
           <CardTitle>API key</CardTitle>
-          <CardDescription>Premium: programmatic access to the GovWatch dataset.</CardDescription>
+          <CardDescription>Premium: programmatic access to the DAO Sentinel dataset.</CardDescription>
         </CardHeader>
         <CardContent>
           <ApiKeyManager initialKey={user.apiKey ?? null} plan={user.plan} />

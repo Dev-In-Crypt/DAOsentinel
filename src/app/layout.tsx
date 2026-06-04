@@ -24,9 +24,9 @@ const jetbrainsMono = JetBrains_Mono({
 });
 
 export const metadata: Metadata = {
-  title: 'GovWatch — Mission control for on-chain democracy',
+  title: 'DAO Sentinel — Mission control for on-chain democracy',
   description:
-    'GovWatch tracks voter turnout, power concentration, and whale activity across the DAO universe — so governance capture never slips by unseen.',
+    'DAO Sentinel tracks voter turnout, power concentration, and whale activity across the DAO universe — so governance capture never slips by unseen.',
   metadataBase: new URL(process.env.NEXTAUTH_URL ?? 'http://localhost:3000'),
 };
 

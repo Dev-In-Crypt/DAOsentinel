@@ -30,7 +30,7 @@ export default function LoginForm() {
     <div className="container max-w-md py-24">
       <Card>
         <CardHeader>
-          <CardTitle>Sign in to GovWatch</CardTitle>
+          <CardTitle>Sign in to DAO Sentinel</CardTitle>
           <CardDescription>We&apos;ll email you a magic link — no password.</CardDescription>
         </CardHeader>
         <CardContent>

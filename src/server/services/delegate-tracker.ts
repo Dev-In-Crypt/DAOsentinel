@@ -132,7 +132,7 @@ export async function resolveDelegateEns(limit = 100): Promise<number> {
   for (const d of needs) {
     try {
       const r = await fetch(`https://api.ensideas.com/ens/resolve/${d.address}`, {
-        headers: { 'user-agent': 'govwatch/0.1' },
+        headers: { 'user-agent': 'daosentinel/0.1' },
       });
       if (!r.ok) continue;
       const data = (await r.json()) as { name?: string; avatar?: string };

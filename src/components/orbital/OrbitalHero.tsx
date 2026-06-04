@@ -90,7 +90,7 @@ export function OrbitalHero({
           <span className="grad-text">on-chain democracy</span>
         </h1>
         <p>
-          GovWatch tracks voter turnout, power concentration, and whale activity across the DAO
+          DAO Sentinel tracks voter turnout, power concentration, and whale activity across the DAO
           universe — so governance capture never slips by unseen.
         </p>
       </div>

@@ -47,7 +47,7 @@ interface TreasuryResponse {
 async function fetchTreasury(llamaSlug: string): Promise<number | null> {
   try {
     const r = await fetch(`https://api.llama.fi/treasury/${llamaSlug}`, {
-      headers: { 'user-agent': 'govwatch/0.1' },
+      headers: { 'user-agent': 'daosentinel/0.1' },
       // Llama has no auth but is sometimes slow.
       signal: AbortSignal.timeout(15_000),
     });

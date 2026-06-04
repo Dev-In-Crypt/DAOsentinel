@@ -4,7 +4,7 @@ import { proposals, daos } from '../db/schema';
 import { SUMMARY_BODY_TRUNCATE } from '@/lib/constants';
 import { chat } from '../ai/openrouter';
 
-export const SUMMARY_SYSTEM_PROMPT = `You are GovWatch AI, a governance analyst that explains DAO proposals to regular people.
+export const SUMMARY_SYSTEM_PROMPT = `You are DAO Sentinel AI, a governance analyst that explains DAO proposals to regular people.
 
 Given a DAO proposal, return STRICT JSON with exactly these keys:
 {

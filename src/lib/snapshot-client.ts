@@ -6,7 +6,7 @@ export const SNAPSHOT_ENDPOINT = 'https://hub.snapshot.org/graphql';
 export const snapshotClient = new GraphQLClient(SNAPSHOT_ENDPOINT, {
   headers: {
     'content-type': 'application/json',
-    'user-agent': 'govwatch/0.1 (+https://govwatch.xyz)',
+    'user-agent': 'daosentinel/0.1 (+https://daosentinel.xyz)',
   },
 });
 

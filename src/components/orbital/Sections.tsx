@@ -88,7 +88,7 @@ export function FeaturesSection() {
         <span className="eyebrow">The platform</span>
         <h2>Six instruments, one cockpit.</h2>
         <p>
-          GovWatch fuses on-chain data, Snapshot, and delegate registries into a single
+          DAO Sentinel fuses on-chain data, Snapshot, and delegate registries into a single
           situational-awareness layer for DAO governance.
         </p>
       </div>
@@ -125,7 +125,7 @@ export function PipelineSection() {
     {
       n: '03',
       t: 'Alert',
-      d: 'Set thresholds once. GovWatch pings you on Telegram, Discord, or webhook the instant governance integrity is at risk.',
+      d: 'Set thresholds once. DAO Sentinel pings you on Telegram, Discord, or webhook the instant governance integrity is at risk.',
     },
   ];
   return (
@@ -207,13 +207,13 @@ export function SocialProof() {
         <span className="eyebrow" style={{ justifyContent: 'center' }}>
           Trusted by stewards
         </span>
-        <h2>Delegates and foundations run on GovWatch.</h2>
+        <h2>Delegates and foundations run on DAO Sentinel.</h2>
       </div>
       <div className="quotes">
         <div className="quote-card feature reveal">
           <blockquote>
             "We caught a coordinated delegation attack 40 minutes before the vote closed.
-            GovWatch's whale alert paid for itself a hundred times over that day."
+            DAO Sentinel's whale alert paid for itself a hundred times over that day."
           </blockquote>
           <div className="quote-who">
             <div className="qw-av">MR</div>

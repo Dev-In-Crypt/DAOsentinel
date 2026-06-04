@@ -22,7 +22,7 @@ export interface WhaleAlertEmailProps {
 }
 
 export default function WhaleAlertEmail(p: WhaleAlertEmailProps) {
-  const base = 'https://govwatch.xyz';
+  const base = 'https://daosentinel.xyz';
   return (
     <Html>
       <Head />
@@ -40,7 +40,7 @@ export default function WhaleAlertEmail(p: WhaleAlertEmailProps) {
               {p.vp.toLocaleString()} VP ({p.vpPct.toFixed(1)}% of total).
             </Text>
             <Link href={`${base}/proposals/${p.proposalId}`} style={link}>
-              View on GovWatch →
+              View on DAO Sentinel →
             </Link>
           </Section>
           <Text style={muted}>

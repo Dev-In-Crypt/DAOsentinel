@@ -20,10 +20,10 @@ export default function MagicLinkEmail({ url, host }: MagicLinkEmailProps) {
   return (
     <Html>
       <Head />
-      <Preview>Sign in to GovWatch</Preview>
+      <Preview>Sign in to DAO Sentinel</Preview>
       <Body style={body}>
         <Container style={container}>
-          <Heading style={h1}>GovWatch</Heading>
+          <Heading style={h1}>DAO Sentinel</Heading>
           <Text style={text}>Click the button below to sign in to {host}.</Text>
           <Section style={{ textAlign: 'center', margin: '32px 0' }}>
             <Button href={url} style={button}>

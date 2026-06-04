@@ -49,7 +49,7 @@ export function ApiKeyManager({ initialKey, plan }: { initialKey: string | null;
       </div>
       <p className="text-xs text-muted-foreground">
         Send as <code>Authorization: Bearer &lt;key&gt;</code> to{' '}
-        <code>https://govwatch.xyz/api/v1/proposals</code> etc. Rotating invalidates the old key
+        <code>https://daosentinel.xyz/api/v1/proposals</code> etc. Rotating invalidates the old key
         immediately.
       </p>
     </div>

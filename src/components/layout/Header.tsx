@@ -17,7 +17,7 @@ export function Header() {
       <div className="mc-nav-inner">
         <Link href="/" className="mc-brand">
           <BrandMark />
-          GovWatch
+          DAO Sentinel
         </Link>
         <div className="mc-nav-links">
           <Link href="/daos">DAOs</Link>

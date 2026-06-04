@@ -14,11 +14,11 @@ import {
 
 const resend = process.env.RESEND_API_KEY ? new Resend(process.env.RESEND_API_KEY) : null;
 
-export const DIGEST_SYSTEM_PROMPT = `You are the editor of GovWatch Weekly, a newsletter for DAO governance observers.
+export const DIGEST_SYSTEM_PROMPT = `You are the editor of DAO Sentinel Weekly, a newsletter for DAO governance observers.
 
 Write a concise, scannable weekly digest in Markdown. Use this exact structure:
 
-# GovWatch Weekly — {date}
+# DAO Sentinel Weekly — {date}
 
 ## 📰 Top stories
 For each of the top 3-5 proposals: a one-line headline, one sentence on what's at stake, and the DAO name + result/state.
@@ -127,7 +127,7 @@ export async function generateDigest(payload?: DigestPayload): Promise<{
   title: string;
 } | null> {
   const data = payload ?? (await gatherDigestData());
-  const title = `GovWatch Weekly — ${data.weekOf.toISOString().slice(0, 10)}`;
+  const title = `DAO Sentinel Weekly — ${data.weekOf.toISOString().slice(0, 10)}`;
 
   let body = formatFallback(title, data);
   const response = await chat({
@@ -210,7 +210,7 @@ export async function sendDigestToSubscribers(digestId: string): Promise<number>
     .from(newsletterSubscribers)
     .where(eq(newsletterSubscribers.isActive, true));
 
-  const from = process.env.EMAIL_FROM ?? 'GovWatch <noreply@govwatch.xyz>';
+  const from = process.env.EMAIL_FROM ?? 'DAO Sentinel <noreply@daosentinel.xyz>';
   const html = await renderWeeklyDigest({
     title: d.title,
     markdownBody: d.body,

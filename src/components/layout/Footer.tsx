@@ -15,7 +15,7 @@ export function Footer() {
           <div className="foot-brand">
             <Link href="/" className="mc-brand">
               <BrandMark />
-              GovWatch
+              DAO Sentinel
             </Link>
             <p>
               Mission control for on-chain democracy. Independent, real-time, multi-chain
@@ -34,7 +34,7 @@ export function Footer() {
           ))}
         </div>
         <div className="foot-bottom">
-          <span>© 2026 GovWatch Labs · Built for governance vigilance</span>
+          <span>© 2026 DAO Sentinel Labs · Built for governance vigilance</span>
           <span>Data from Snapshot &amp; on-chain sources</span>
         </div>
       </div>
