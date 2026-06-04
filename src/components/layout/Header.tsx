@@ -25,6 +25,7 @@ export function Header() {
           DAO Sentinel
         </Link>
         <div className="mc-nav-links">
+          <Link href="/dashboard">Dashboard</Link>
           <Link href="/daos">DAOs</Link>
           <Link href="/proposals">Proposals</Link>
           <Link href="/alerts">Alerts</Link>
@@ -47,14 +48,13 @@ export function Header() {
               </button>
             </>
           ) : (
-            <>
-              <Link href="/login" className="signin">
-                Sign in
-              </Link>
-              <Link href="/dashboard" className="btn-mc btn-mc-primary" style={{ padding: '9px 18px', fontSize: 14 }}>
-                Start watching
-              </Link>
-            </>
+            <Link
+              href="/login"
+              className="btn-mc btn-mc-primary"
+              style={{ padding: '9px 22px', fontSize: 14 }}
+            >
+              Sign in
+            </Link>
           )}
         </div>
       </div>

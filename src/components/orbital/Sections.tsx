@@ -325,7 +325,7 @@ export function PricingSection() {
         <span className="eyebrow" style={{ justifyContent: 'center' }}>
           Pricing
         </span>
-        <h2>Start watching free.</h2>
+        <h2>Free for everyone.</h2>
         <p>Scale up when governance integrity becomes mission-critical.</p>
       </div>
       <div className="price-grid">
@@ -430,11 +430,11 @@ export function FinalCTA() {
           Join the delegates, funds, and foundations keeping on-chain democracy honest.
         </p>
         <div className="cta-actions">
-          <a className="btn-mc btn-mc-primary" href="/dashboard">
-            Start watching free
+          <a className="btn-mc btn-mc-primary" href="/login">
+            Sign in
           </a>
-          <a className="btn-mc btn-mc-ghost" href="/pricing">
-            View pricing
+          <a className="btn-mc btn-mc-ghost" href="/dashboard">
+            Open dashboard
           </a>
         </div>
       </div>
