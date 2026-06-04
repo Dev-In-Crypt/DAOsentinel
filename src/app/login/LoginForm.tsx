@@ -38,7 +38,7 @@ export default function LoginForm() {
             className="space-y-3"
             onSubmit={(e) => {
               e.preventDefault();
-              if (email) signIn('resend', { email });
+              if (email) signIn('resend', { email, callbackUrl: '/dashboard' });
             }}
           >
             <Input
