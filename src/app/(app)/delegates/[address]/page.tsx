@@ -3,7 +3,6 @@ import Link from 'next/link';
 import { db } from '@/server/db';
 import { delegates, delegateDaoActivity, daos } from '@/server/db/schema';
 import { eq, desc } from 'drizzle-orm';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { formatNumber, shortenAddress } from '@/lib/utils';
 
@@ -26,72 +25,127 @@ export default async function DelegateProfilePage({
     .where(eq(delegateDaoActivity.delegateId, delegate.id))
     .orderBy(desc(delegateDaoActivity.votingPower));
 
-  return (
-    <div className="space-y-6">
-      <header>
-        <h1 className="text-2xl font-bold">
-          {delegate.ensName ?? shortenAddress(delegate.address)}
-        </h1>
-        <p className="font-mono text-xs text-muted-foreground">{delegate.address}</p>
-      </header>
+  const participationPct = (Number(delegate.participationRate ?? 0)) * 100;
+  const responseHours = Number(delegate.avgResponseTimeHours ?? 0);
 
-      <div className="grid gap-3 sm:grid-cols-3">
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-sm font-medium">DAOs active</CardTitle>
-          </CardHeader>
-          <CardContent className="text-3xl font-bold">{delegate.totalDaosActive ?? 0}</CardContent>
-        </Card>
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-sm font-medium">Votes cast</CardTitle>
-          </CardHeader>
-          <CardContent className="text-3xl font-bold">
-            {formatNumber(delegate.totalVotesCast ?? 0)}
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-sm font-medium">Participation</CardTitle>
-          </CardHeader>
-          <CardContent className="text-3xl font-bold">
-            {((Number(delegate.participationRate ?? 0)) * 100).toFixed(0)}%
-          </CardContent>
-        </Card>
+  return (
+    <div className="space-y-10">
+      <Link
+        href="/delegates"
+        className="inline-flex items-center gap-2 text-sm text-[hsl(var(--indigo-bright))] hover:underline"
+      >
+        ← Back to delegate leaderboard
+      </Link>
+
+      {/* Hero */}
+      <div>
+        <span className="eyebrow mb-3">Cross-DAO delegate profile</span>
+        <h1
+          className="mt-4 text-4xl font-semibold md:text-5xl"
+          style={{
+            fontFamily: 'var(--font-space-grotesk), system-ui, sans-serif',
+            letterSpacing: '-0.025em',
+          }}
+        >
+          {delegate.ensName ? (
+            <>
+              {delegate.ensName}
+              {' '}
+              <span className="grad-text">.eth</span>
+            </>
+          ) : (
+            <span className="mono">{shortenAddress(delegate.address)}</span>
+          )}
+        </h1>
+        <p className="mt-3 font-mono text-xs text-[hsl(var(--text-faint))] break-all">
+          {delegate.address}
+        </p>
       </div>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>DAO activity</CardTitle>
-        </CardHeader>
-        <CardContent className="divide-y p-0">
+      {/* Stat cells */}
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        <div className="stat-cell">
+          <div className="lab">DAOs active in</div>
+          <div className="val">{delegate.totalDaosActive ?? 0}</div>
+        </div>
+        <div className="stat-cell">
+          <div className="lab">Total votes cast</div>
+          <div className="val">
+            <span className="accent">{formatNumber(delegate.totalVotesCast ?? 0)}</span>
+          </div>
+        </div>
+        <div className="stat-cell">
+          <div className="lab">Participation</div>
+          <div className="val">
+            <span
+              className={
+                participationPct >= 50 ? 'accent' : participationPct >= 25 ? 'accent-warn' : ''
+              }
+              style={participationPct < 25 ? { color: 'hsl(var(--rose))' } : undefined}
+            >
+              {participationPct.toFixed(0)}%
+            </span>
+          </div>
+        </div>
+        <div className="stat-cell">
+          <div className="lab">Avg response · hours</div>
+          <div className="val">
+            {responseHours > 0 ? responseHours.toFixed(1) : '—'}
+          </div>
+        </div>
+      </div>
+
+      {/* Activity per DAO */}
+      <section>
+        <div className="mb-4 flex items-baseline justify-between">
+          <h2 className="app-sec-title">DAO activity</h2>
+          <span className="text-xs mono text-[hsl(var(--text-dim))]">
+            {activity.length} {activity.length === 1 ? 'DAO' : 'DAOs'}
+          </span>
+        </div>
+        <div className="glass-card divide-y divide-[hsl(var(--line))] p-0">
           {activity.length === 0 && (
-            <div className="p-6 text-center text-sm text-muted-foreground">
+            <div className="p-10 text-center text-sm text-[hsl(var(--text-dim))]">
               No DAO activity recorded.
             </div>
           )}
-          {activity.map(({ activity: a, dao }) => (
-            <Link
-              key={a.id}
-              href={`/daos/${dao.slug}`}
-              className="flex items-center justify-between p-4 hover:bg-accent"
-            >
-              <div>
-                <div className="font-medium">{dao.name}</div>
-                <div className="text-xs text-muted-foreground">
-                  {a.votesCast} of {a.proposalsAvailable} proposals voted
+          {activity.map(({ activity: a, dao }) => {
+            const part = Number(a.participationRate ?? 0) * 100;
+            return (
+              <Link
+                key={a.id}
+                href={`/daos/${dao.slug}`}
+                className="flex items-center justify-between gap-4 p-4 transition-colors hover:bg-[hsl(var(--accent)/0.4)]"
+              >
+                <div>
+                  <div
+                    className="font-semibold"
+                    style={{ fontFamily: 'var(--font-space-grotesk), system-ui, sans-serif' }}
+                  >
+                    {dao.name}
+                  </div>
+                  <div className="text-xs mono text-[hsl(var(--text-dim))]">
+                    {a.votesCast} of {a.proposalsAvailable} proposals voted
+                  </div>
                 </div>
-              </div>
-              <div className="text-right">
-                <div className="text-sm font-medium">{formatNumber(Number(a.votingPower ?? 0))} VP</div>
-                <Badge variant="outline">
-                  {((Number(a.participationRate ?? 0)) * 100).toFixed(0)}%
-                </Badge>
-              </div>
-            </Link>
-          ))}
-        </CardContent>
-      </Card>
+                <div className="text-right">
+                  <div className="text-sm mono font-medium">
+                    {formatNumber(Number(a.votingPower ?? 0))} VP
+                  </div>
+                  <Badge
+                    variant={
+                      part >= 50 ? 'success' : part >= 25 ? 'warning' : 'destructive'
+                    }
+                    className="mt-1"
+                  >
+                    {part.toFixed(0)}% participation
+                  </Badge>
+                </div>
+              </Link>
+            );
+          })}
+        </div>
+      </section>
     </div>
   );
 }
