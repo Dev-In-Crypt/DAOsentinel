@@ -1,3 +1,4 @@
+import { unstable_cache } from 'next/cache';
 import { desc, eq, gt, sql, and } from 'drizzle-orm';
 import { db } from './db';
 import { daos, proposals, alerts, scoreHistory } from './db/schema';
@@ -70,53 +71,83 @@ const EMPTY_LANDING: LandingData = {
   chains: new Set(TRACKED_DAOS.map((d) => d.chain)).size,
 };
 
-export async function loadLandingData(): Promise<LandingData> {
+async function _loadLandingData(): Promise<LandingData> {
   try {
-    const allDaos = await db.select().from(daos).orderBy(desc(daos.democracyScore)).limit(12);
+    // Fan out the 3 independent queries in parallel.
+    const [allDaos, totalsResult, trendResult] = await Promise.all([
+      db.select().from(daos).orderBy(desc(daos.democracyScore)).limit(12),
+      db.execute(sql`
+        SELECT
+          (SELECT count(*) FROM daos)::int AS daos,
+          (SELECT count(*) FROM proposals)::int AS proposals,
+          (SELECT count(*) FROM alerts
+             WHERE type = 'whale_vote' AND created_at > now() - interval '24 hours')::int AS whales24,
+          (SELECT coalesce(sum(treasury_usd), 0) FROM daos)::numeric AS treasury
+      `),
+      db.execute(sql`
+        SELECT avg(score::numeric) AS prev FROM score_history
+        WHERE computed_at <= now() - interval '30 days'
+      `),
+    ]);
+
     if (allDaos.length === 0) return EMPTY_LANDING;
 
-    // Aggregate stats
-    const [totals] = (await db.execute(sql`
-      SELECT
-        (SELECT count(*) FROM daos)::int AS daos,
-        (SELECT count(*) FROM proposals)::int AS proposals,
-        (SELECT count(*) FROM alerts
-           WHERE type = 'whale_vote' AND created_at > now() - interval '24 hours')::int AS whales24,
-        (SELECT coalesce(sum(treasury_usd), 0) FROM daos)::numeric AS treasury
-    `)) as unknown as Array<{
+    const totalsArr = totalsResult as unknown as Array<{
       daos: number;
       proposals: number;
       whales24: number;
       treasury: string;
     }>;
+    const totals = totalsArr[0];
 
+    const trendArr = trendResult as unknown as Array<{ prev: string | null }>;
     const avgScore =
       allDaos.reduce((s, d) => s + Number(d.democracyScore ?? 0), 0) / Math.max(allDaos.length, 1);
-
-    // 30d trend: latest minus value 30d ago
-    const trendRow = (await db.execute(sql`
-      SELECT avg(score::numeric) AS prev FROM score_history
-      WHERE computed_at <= now() - interval '30 days'
-    `)) as unknown as Array<{ prev: string | null }>;
-    const prev = Number(trendRow[0]?.prev ?? avgScore);
+    const prev = Number(trendArr[0]?.prev ?? avgScore);
     const trend = avgScore - prev;
 
-    // Hydrate planets
-    const placed: OrbitalDao[] = [];
-    for (const [i, d] of allDaos.entries()) {
+    // ===== Recent proposals: 1 query for ALL 12 DAOs instead of N+1 =====
+    // Postgres LATERAL with a per-DAO limit-3 sub-select. ~10x faster than
+    // 12 sequential round-trips through the Supabase pooler.
+    const daoIds = allDaos.map((d) => d.id);
+    const recentRows = (await db.execute(sql`
+      SELECT
+        rp.dao_id,
+        rp.title,
+        rp.state,
+        rp.quorum_reached,
+        rp.votes_count
+      FROM unnest(${sql.raw(`ARRAY[${daoIds.map((id) => `'${id}'::uuid`).join(',')}]`)}) AS d(dao_id)
+      CROSS JOIN LATERAL (
+        SELECT title, state, quorum_reached, votes_count, dao_id
+        FROM proposals
+        WHERE dao_id = d.dao_id
+        ORDER BY created_at DESC
+        LIMIT 3
+      ) rp
+    `)) as unknown as Array<{
+      dao_id: string;
+      title: string;
+      state: string;
+      quorum_reached: boolean | null;
+      votes_count: number | null;
+    }>;
+
+    const recentByDao = new Map<string, typeof recentRows>();
+    for (const row of recentRows) {
+      const arr = recentByDao.get(row.dao_id) ?? [];
+      arr.push(row);
+      recentByDao.set(row.dao_id, arr);
+    }
+
+    const placed: OrbitalDao[] = allDaos.map((d, i) => {
       const palette = paletteFor(d.slug, d.governanceToken, i);
       const score = Number(d.democracyScore ?? 0);
       const tagInfo = tagFor(score);
       const breakdown = (d.scoreBreakdown ?? {}) as Record<string, number>;
+      const recent = recentByDao.get(d.id) ?? [];
 
-      const recent = await db
-        .select()
-        .from(proposals)
-        .where(eq(proposals.daoId, d.id))
-        .orderBy(desc(proposals.createdAt))
-        .limit(3);
-
-      placed.push({
+      return {
         id: d.id,
         slug: d.slug,
         name: d.name,
@@ -126,7 +157,7 @@ export async function loadLandingData(): Promise<LandingData> {
         score,
         tag: tagInfo.tag,
         tagLabel: tagInfo.label,
-        turnout: (breakdown.participation ?? 0),
+        turnout: breakdown.participation ?? 0,
         proposals30: d.totalProposals ?? 0,
         treasury: formatTreasury(d.treasuryUsd),
         holders: d.totalVoters ? `${(d.totalVoters / 1000).toFixed(0)}K` : '—',
@@ -136,18 +167,18 @@ export async function loadLandingData(): Promise<LandingData> {
           status:
             p.state === 'active'
               ? ('live' as const)
-              : p.quorumReached
+              : p.quorum_reached
                 ? ('pass' as const)
                 : ('fail' as const),
           sub:
             p.state === 'active'
               ? 'live vote'
-              : p.quorumReached
-                ? `${p.votesCount ?? 0} voters`
+              : p.quorum_reached
+                ? `${p.votes_count ?? 0} voters`
                 : 'no quorum',
         })),
-      });
-    }
+      };
+    });
 
     return {
       daos: placed,
@@ -167,3 +198,13 @@ export async function loadLandingData(): Promise<LandingData> {
     return EMPTY_LANDING;
   }
 }
+
+/**
+ * Cached wrapper — landing data is the same for every visitor and refreshes
+ * every 60 s. The expensive UNNEST + LATERAL query only runs once per minute
+ * regardless of traffic.
+ */
+export const loadLandingData = unstable_cache(_loadLandingData, ['landing-data-v1'], {
+  revalidate: 60,
+  tags: ['landing'],
+});
