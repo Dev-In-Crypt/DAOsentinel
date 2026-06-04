@@ -2,10 +2,10 @@ import Link from 'next/link';
 import { db } from '@/server/db';
 import { daos } from '@/server/db/schema';
 import { desc, asc, ilike } from 'drizzle-orm';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { ScoreGauge } from '@/components/charts/ScoreGauge';
 import { Input } from '@/components/ui/input';
+import { PageHeader } from '@/components/layout/PageHeader';
 import { formatNumber, formatUSD } from '@/lib/utils';
 
 export const dynamic = 'force-dynamic';
@@ -20,7 +20,11 @@ export default async function DaosPage({
   const sort = params.sort ?? 'score';
 
   const orderBy =
-    sort === 'name' ? asc(daos.name) : sort === 'proposals' ? desc(daos.totalProposals) : desc(daos.democracyScore);
+    sort === 'name'
+      ? asc(daos.name)
+      : sort === 'proposals'
+        ? desc(daos.totalProposals)
+        : desc(daos.democracyScore);
 
   const rows = await db
     .select()
@@ -30,21 +34,28 @@ export default async function DaosPage({
     .limit(100);
 
   return (
-    <div className="space-y-6">
-      <div>
-        <h1 className="text-3xl font-bold">DAO Governance Explorer</h1>
-        <p className="text-muted-foreground">
-          {rows.length} DAOs monitored · sorted by{' '}
-          {sort === 'name' ? 'name' : sort === 'proposals' ? 'activity' : 'Democracy Score'}.
-        </p>
-      </div>
+    <div className="space-y-8">
+      <PageHeader
+        eyebrow="The leaderboard"
+        title="DAO Governance"
+        highlight="Explorer"
+        description={
+          <>
+            {rows.length} DAOs monitored. Sorted by{' '}
+            <span className="text-[hsl(var(--indigo-bright))] mono">
+              {sort === 'name' ? 'name' : sort === 'proposals' ? 'activity' : 'Democracy Score'}
+            </span>
+            .
+          </>
+        }
+      />
 
-      <form className="flex flex-wrap gap-2" action="" method="get">
+      <form className="flex flex-wrap gap-3" action="" method="get">
         <Input name="search" defaultValue={search} placeholder="Search DAOs…" className="max-w-md" />
         <select
           name="sort"
           defaultValue={sort}
-          className="h-10 rounded-md border border-input bg-background px-3 text-sm"
+          className="h-11 rounded-md bg-[hsl(var(--text-dim)/0.05)] px-3 text-sm shadow-[inset_0_0_0_1px_hsl(var(--line))] mono"
         >
           <option value="score">Sort: Democracy Score</option>
           <option value="name">Sort: Name</option>
@@ -53,40 +64,52 @@ export default async function DaosPage({
       </form>
 
       <div className="grid gap-3">
-        {rows.map((d) => (
+        {rows.map((d, i) => (
           <Link key={d.id} href={`/daos/${d.slug}`} className="group">
-            <Card className="transition-colors group-hover:border-primary/50">
-              <CardContent className="flex items-center gap-4 py-4">
-                <ScoreGauge score={Number(d.democracyScore ?? 0)} size="sm" />
-                <div className="flex-1">
-                  <div className="flex items-center gap-2">
-                    <span className="text-lg font-semibold">{d.name}</span>
-                    <Badge variant="outline">{d.chain}</Badge>
-                    {d.governanceToken && <Badge variant="secondary">{d.governanceToken}</Badge>}
-                  </div>
-                  <div className="text-xs text-muted-foreground">
-                    {formatNumber(d.totalProposals ?? 0)} proposals ·{' '}
-                    {((Number(d.avgParticipationRate ?? 0)) * 100).toFixed(2)}% participation
-                    {d.treasuryUsd ? ` · ${formatUSD(Number(d.treasuryUsd))} treasury` : ''}
-                  </div>
+            <div className="glass-card flex items-center gap-5 py-4">
+              <span
+                className="w-8 text-2xl font-bold text-[hsl(var(--text-faint))]"
+                style={{ fontFamily: 'var(--font-jetbrains-mono), ui-monospace, monospace' }}
+              >
+                {String(i + 1).padStart(2, '0')}
+              </span>
+              <ScoreGauge score={Number(d.democracyScore ?? 0)} size="sm" />
+              <div className="flex-1">
+                <div className="flex items-center gap-2">
+                  <span
+                    className="text-lg font-semibold"
+                    style={{ fontFamily: 'var(--font-space-grotesk), system-ui, sans-serif' }}
+                  >
+                    {d.name}
+                  </span>
+                  <Badge variant="outline">{d.chain}</Badge>
+                  {d.governanceToken && <Badge variant="secondary">{d.governanceToken}</Badge>}
                 </div>
-                <div className="text-right text-sm">
-                  <div className="font-bold">{Number(d.democracyScore ?? 0).toFixed(0)}/100</div>
-                  <div className="text-xs text-muted-foreground">Democracy Score</div>
+                <div className="mt-1 text-xs mono text-[hsl(var(--text-dim))]">
+                  {formatNumber(d.totalProposals ?? 0)} proposals ·{' '}
+                  {(Number(d.avgParticipationRate ?? 0) * 100).toFixed(2)}% participation
+                  {d.treasuryUsd ? ` · ${formatUSD(Number(d.treasuryUsd))} treasury` : ''}
                 </div>
-              </CardContent>
-            </Card>
+              </div>
+              <div className="text-right">
+                <div
+                  className="text-2xl font-bold"
+                  style={{ fontFamily: 'var(--font-jetbrains-mono), ui-monospace, monospace' }}
+                >
+                  {Number(d.democracyScore ?? 0).toFixed(0)}
+                  <span style={{ fontSize: 13, color: 'hsl(var(--text-dim))' }}>/100</span>
+                </div>
+                <div className="text-[10px] uppercase tracking-wider mono text-[hsl(var(--text-faint))]">
+                  Democracy
+                </div>
+              </div>
+            </div>
           </Link>
         ))}
         {!rows.length && (
-          <Card>
-            <CardHeader>
-              <CardTitle>No DAOs yet</CardTitle>
-            </CardHeader>
-            <CardContent>
-              Run <code>npm run db:seed</code> after applying migrations.
-            </CardContent>
-          </Card>
+          <div className="glass-card py-12 text-center text-sm text-[hsl(var(--text-dim))]">
+            No DAOs found.
+          </div>
         )}
       </div>
     </div>

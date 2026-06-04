@@ -2,10 +2,10 @@ import Link from 'next/link';
 import { db } from '@/server/db';
 import { alerts, daos } from '@/server/db/schema';
 import { desc, eq, and } from 'drizzle-orm';
-import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { timeAgo } from '@/lib/utils';
+import { PageHeader } from '@/components/layout/PageHeader';
 import { LiveAlertFeed } from '@/components/alerts/LiveAlertFeed';
+import { timeAgo } from '@/lib/utils';
 
 export const dynamic = 'force-dynamic';
 
@@ -37,41 +37,49 @@ export default async function AlertsPage({
     .limit(100);
 
   return (
-    <div className="space-y-6">
-      <div>
-        <h1 className="text-3xl font-bold">Alert feed</h1>
-        <p className="text-muted-foreground">
-          Whales, swings, quorum risks, score drops, coordinated voting.
-        </p>
-      </div>
+    <div className="space-y-8">
+      <PageHeader
+        eyebrow="The watchtower"
+        title="Alert"
+        highlight="Feed"
+        description="Whales, swings, quorum risks, score drops, coordinated voting — live as it happens."
+        right={
+          <form className="flex flex-wrap gap-2 text-sm">
+            <select
+              name="type"
+              defaultValue={sp.type ?? ''}
+              className="h-10 rounded-md bg-[hsl(var(--text-dim)/0.05)] px-3 shadow-[inset_0_0_0_1px_hsl(var(--line))] mono"
+            >
+              <option value="">All types</option>
+              {Object.entries(TYPE_LABEL).map(([v, l]) => (
+                <option key={v} value={v}>
+                  {l}
+                </option>
+              ))}
+            </select>
+            <select
+              name="severity"
+              defaultValue={sp.severity ?? ''}
+              className="h-10 rounded-md bg-[hsl(var(--text-dim)/0.05)] px-3 shadow-[inset_0_0_0_1px_hsl(var(--line))] mono"
+            >
+              <option value="">All severities</option>
+              <option value="critical">Critical</option>
+              <option value="warning">Warning</option>
+              <option value="info">Info</option>
+            </select>
+          </form>
+        }
+      />
 
       <LiveAlertFeed />
 
-      <form className="flex flex-wrap gap-2 text-sm">
-        <select name="type" defaultValue={sp.type ?? ''} className="h-9 rounded-md border bg-background px-2">
-          <option value="">All types</option>
-          {Object.entries(TYPE_LABEL).map(([v, l]) => (
-            <option key={v} value={v}>
-              {l}
-            </option>
-          ))}
-        </select>
-        <select
-          name="severity"
-          defaultValue={sp.severity ?? ''}
-          className="h-9 rounded-md border bg-background px-2"
-        >
-          <option value="">All severities</option>
-          <option value="critical">Critical</option>
-          <option value="warning">Warning</option>
-          <option value="info">Info</option>
-        </select>
-      </form>
-
-      <Card>
-        <CardContent className="divide-y p-0">
+      <div>
+        <h2 className="app-sec-title">History · last {rows.length}</h2>
+        <div className="glass-card divide-y divide-[hsl(var(--line))] p-0">
           {rows.length === 0 && (
-            <div className="p-8 text-center text-sm text-muted-foreground">No alerts match.</div>
+            <div className="p-10 text-center text-sm text-[hsl(var(--text-dim))]">
+              No alerts match the filter.
+            </div>
           )}
           {rows.map(({ alert: a, dao }) => (
             <div key={a.id} className="flex items-start gap-3 p-4">
@@ -87,10 +95,18 @@ export default async function AlertsPage({
                 {a.severity}
               </Badge>
               <div className="flex-1">
-                <div className="font-medium">{a.title}</div>
-                <div className="text-sm text-muted-foreground">{a.description}</div>
-                <div className="mt-1 flex items-center gap-2 text-xs text-muted-foreground">
-                  <Link href={`/daos/${dao.slug}`} className="hover:underline">
+                <div
+                  className="font-semibold"
+                  style={{ fontFamily: 'var(--font-space-grotesk), system-ui, sans-serif' }}
+                >
+                  {a.title}
+                </div>
+                <div className="text-sm text-[hsl(var(--text-dim))]">{a.description}</div>
+                <div className="mt-1 flex items-center gap-2 text-xs mono text-[hsl(var(--text-faint))]">
+                  <Link
+                    href={`/daos/${dao.slug}`}
+                    className="hover:text-[hsl(var(--indigo-bright))]"
+                  >
                     {dao.name}
                   </Link>
                   <span>·</span>
@@ -100,7 +116,10 @@ export default async function AlertsPage({
                   {a.proposalId && (
                     <>
                       <span>·</span>
-                      <Link href={`/proposals/${a.proposalId}`} className="hover:underline">
+                      <Link
+                        href={`/proposals/${a.proposalId}`}
+                        className="hover:text-[hsl(var(--indigo-bright))]"
+                      >
                         view proposal
                       </Link>
                     </>
@@ -109,8 +128,8 @@ export default async function AlertsPage({
               </div>
             </div>
           ))}
-        </CardContent>
-      </Card>
+        </div>
+      </div>
     </div>
   );
 }
