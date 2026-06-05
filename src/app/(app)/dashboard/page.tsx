@@ -1,7 +1,7 @@
 import Link from 'next/link';
 import { db } from '@/server/db';
 import { daos, proposals, alerts } from '@/server/db/schema';
-import { desc, eq, sql } from 'drizzle-orm';
+import { asc, desc, and, eq, gt, sql } from 'drizzle-orm';
 import { Badge } from '@/components/ui/badge';
 import { ScoreGauge } from '@/components/charts/ScoreGauge';
 import { RiskBadge } from '@/components/proposals/RiskBadge';
@@ -15,7 +15,8 @@ export const metadata = {
 };
 
 export default async function DashboardHome() {
-  const [trending, recentAlerts, topDaos, counts] = await Promise.all([
+  const now = new Date();
+  const [trending, recentAlerts, topDaos, counts, upcoming] = await Promise.all([
     db
       .select({ proposal: proposals, dao: daos })
       .from(proposals)
@@ -36,7 +37,43 @@ export default async function DashboardHome() {
         (SELECT count(*) FROM alerts WHERE created_at > now() - interval '24 hours')::int AS alerts_24h,
         (SELECT round(avg(democracy_score)::numeric, 1) FROM daos WHERE democracy_score::numeric > 0) AS avg_score
     `),
-  ]).catch(() => [[], [], [], [{ active_props: 0, alerts_24h: 0, avg_score: 0 }]] as const);
+    db
+      .select({ proposal: proposals, dao: daos })
+      .from(proposals)
+      .innerJoin(daos, eq(daos.id, proposals.daoId))
+      .where(and(eq(proposals.state, 'active'), gt(proposals.endTimestamp, now)))
+      .orderBy(asc(proposals.endTimestamp))
+      .limit(15),
+  ]).catch(
+    () =>
+      [[], [], [], [{ active_props: 0, alerts_24h: 0, avg_score: 0 }], []] as [
+        Awaited<ReturnType<typeof db.select>['from']> extends never
+          ? never
+          : Array<{ proposal: typeof proposals.$inferSelect; dao: typeof daos.$inferSelect }>,
+        Array<{ alert: typeof alerts.$inferSelect; dao: typeof daos.$inferSelect }>,
+        Array<typeof daos.$inferSelect>,
+        Array<{ active_props: number; alerts_24h: number; avg_score: string | number | null }>,
+        Array<{ proposal: typeof proposals.$inferSelect; dao: typeof daos.$inferSelect }>,
+      ],
+  );
+
+  // Bucket upcoming by urgency
+  const d24 = new Date(now.getTime() + 24 * 3600 * 1000);
+  const d3 = new Date(now.getTime() + 3 * 24 * 3600 * 1000);
+  const d7 = new Date(now.getTime() + 7 * 24 * 3600 * 1000);
+  const buckets = {
+    urgent: [] as typeof upcoming,
+    soon: [] as typeof upcoming,
+    watch: [] as typeof upcoming,
+  };
+  for (const row of upcoming) {
+    const end = row.proposal.endTimestamp;
+    if (end <= d24) buckets.urgent.push(row);
+    else if (end <= d3) buckets.soon.push(row);
+    else if (end <= d7) buckets.watch.push(row);
+  }
+  const hasAnyDeadline =
+    buckets.urgent.length + buckets.soon.length + buckets.watch.length > 0;
 
   const stats = (counts as unknown as Array<{
     active_props: number;
@@ -109,6 +146,88 @@ export default async function DashboardHome() {
           )}
         </div>
       </section>
+
+      {/* Upcoming deadlines */}
+      {hasAnyDeadline && (
+        <section>
+          <h2 className="app-sec-title">Upcoming deadlines</h2>
+          <div className="grid gap-4 md:grid-cols-3">
+            {(
+              [
+                {
+                  key: 'urgent',
+                  label: 'Ending in 24h',
+                  badge: 'URGENT',
+                  color: 'hsl(var(--rose))',
+                  items: buckets.urgent,
+                },
+                {
+                  key: 'soon',
+                  label: 'Ending in 3 days',
+                  badge: 'SOON',
+                  color: 'hsl(var(--amber))',
+                  items: buckets.soon,
+                },
+                {
+                  key: 'watch',
+                  label: 'Ending this week',
+                  badge: 'WATCH',
+                  color: 'hsl(var(--indigo-bright))',
+                  items: buckets.watch,
+                },
+              ] as const
+            )
+              .filter((col) => col.items.length > 0)
+              .map((col) => (
+                <div key={col.key} className="flex flex-col gap-3">
+                  <div className="flex items-center justify-between text-xs mono uppercase tracking-wider text-[hsl(var(--text-dim))]">
+                    <span>{col.label}</span>
+                    <span
+                      className="rounded px-2 py-0.5 text-[10px] tracking-wider"
+                      style={{
+                        background: `${col.color}1f`,
+                        color: col.color,
+                        boxShadow: `inset 0 0 0 1px ${col.color}55`,
+                      }}
+                    >
+                      {col.badge} · {col.items.length}
+                    </span>
+                  </div>
+                  {col.items.slice(0, 6).map(({ proposal: p, dao }) => (
+                    <Link
+                      key={p.id}
+                      href={`/proposals/${p.id}`}
+                      className="group block"
+                    >
+                      <div
+                        className="glass-card space-y-2 py-3"
+                        style={{ borderLeft: `3px solid ${col.color}`, paddingLeft: 16 }}
+                      >
+                        <div className="text-xs mono text-[hsl(var(--text-dim))]">
+                          {dao.name}
+                        </div>
+                        <div
+                          className="line-clamp-2 text-sm font-semibold leading-snug"
+                          style={{
+                            fontFamily: 'var(--font-space-grotesk), system-ui, sans-serif',
+                          }}
+                        >
+                          {p.title}
+                        </div>
+                        <div className="flex items-center justify-between text-xs mono">
+                          <span style={{ color: col.color }}>
+                            {timeRemaining(p.endTimestamp)}
+                          </span>
+                          <RiskBadge level={p.aiRiskLevel} />
+                        </div>
+                      </div>
+                    </Link>
+                  ))}
+                </div>
+              ))}
+          </div>
+        </section>
+      )}
 
       <section className="grid gap-6 lg:grid-cols-3">
         <div className="lg:col-span-2">

@@ -1,10 +1,11 @@
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { db } from '@/server/db';
-import { daos, proposals, alerts } from '@/server/db/schema';
-import { desc, eq, and } from 'drizzle-orm';
+import { daos, proposals, alerts, scoreHistory } from '@/server/db/schema';
+import { desc, asc, eq, and } from 'drizzle-orm';
 import { Badge } from '@/components/ui/badge';
 import { ScoreGauge } from '@/components/charts/ScoreGauge';
+import { ScoreTrend } from '@/components/charts/ScoreTrend';
 import { RiskBadge } from '@/components/proposals/RiskBadge';
 import { ProgressBar } from '@/components/ui/progress';
 import { formatNumber, formatPct, timeAgo, timeRemaining } from '@/lib/utils';
@@ -40,7 +41,7 @@ export default async function DaoProfilePage({ params }: { params: Promise<{ slu
   const [dao] = await db.select().from(daos).where(eq(daos.slug, slug)).limit(1);
   if (!dao) notFound();
 
-  const [active, recent, recentAlerts] = await Promise.all([
+  const [active, recent, recentAlerts, history] = await Promise.all([
     db
       .select()
       .from(proposals)
@@ -59,9 +60,23 @@ export default async function DaoProfilePage({ params }: { params: Promise<{ slu
       .where(eq(alerts.daoId, dao.id))
       .orderBy(desc(alerts.createdAt))
       .limit(10),
+    db
+      .select({ score: scoreHistory.score, computedAt: scoreHistory.computedAt })
+      .from(scoreHistory)
+      .where(eq(scoreHistory.daoId, dao.id))
+      .orderBy(asc(scoreHistory.computedAt))
+      .limit(90),
   ]);
 
   const breakdown = (dao.scoreBreakdown ?? {}) as Record<string, number>;
+
+  const trendPoints = history.map((h) => ({
+    day: new Date(h.computedAt).toLocaleDateString(undefined, {
+      month: 'short',
+      day: 'numeric',
+    }),
+    score: Number(h.score),
+  }));
 
   return (
     <div className="space-y-10">
@@ -102,6 +117,18 @@ export default async function DaoProfilePage({ params }: { params: Promise<{ slu
           )}
         </div>
       </div>
+
+      {/* Score trend (hidden if fewer than 3 data points) */}
+      {trendPoints.length >= 3 && (
+        <div>
+          <h2 className="app-sec-title">
+            Democracy Score · last {trendPoints.length} days
+          </h2>
+          <div className="glass-card">
+            <ScoreTrend data={trendPoints} />
+          </div>
+        </div>
+      )}
 
       {/* Score breakdown */}
       {Object.keys(breakdown).length > 0 && (

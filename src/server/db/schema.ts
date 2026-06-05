@@ -29,6 +29,7 @@ export const daos = pgTable(
     governanceToken: text('governance_token'),
     tokenContract: text('token_contract'),
     treasuryUsd: numeric('treasury_usd', { precision: 20, scale: 2 }),
+    tokenPriceUsd: numeric('token_price_usd', { precision: 18, scale: 8 }),
 
     democracyScore: numeric('democracy_score', { precision: 5, scale: 2 }).default('0'),
     scoreUpdatedAt: timestamp('score_updated_at', { withTimezone: true }),
@@ -62,6 +63,7 @@ export const proposals = pgTable(
 
     title: text('title').notNull(),
     body: text('body'),
+    discussion: text('discussion'), // Snapshot proposers' optional forum/discussion URL
     author: text('author').notNull(),
     choices: jsonb('choices').$type<string[]>().notNull(),
 

@@ -67,6 +67,7 @@ export async function syncProposals(): Promise<SyncResult> {
                 source: 'snapshot',
                 title: p.title,
                 body: p.body,
+                discussion: p.discussion,
                 author: p.author,
                 choices: p.choices,
                 state: p.state,
@@ -84,6 +85,7 @@ export async function syncProposals(): Promise<SyncResult> {
                 target: [proposals.daoId, proposals.externalId, proposals.source],
                 set: {
                   state: p.state,
+                  discussion: p.discussion, // backfill on existing rows
                   scores: p.scores ?? [],
                   scoresTotal: p.scores_total != null ? String(p.scores_total) : null,
                   votesCount: p.votes,

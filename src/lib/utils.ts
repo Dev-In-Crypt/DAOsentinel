@@ -25,6 +25,26 @@ export function formatUSD(value: number | null | undefined): string {
   return `$${formatNumber(value, 0)}`;
 }
 
+/**
+ * Format token amount × price as a compact USD value, e.g. `≈$13.4M`.
+ * Returns null when either input is missing so the caller can choose
+ * whether to render anything.
+ */
+export function formatUsdValue(
+  tokens: number,
+  pricePerToken: number | string | null | undefined,
+): string | null {
+  const price = typeof pricePerToken === 'string' ? Number(pricePerToken) : pricePerToken;
+  if (price == null || !Number.isFinite(price) || price <= 0) return null;
+  if (!Number.isFinite(tokens)) return null;
+  const usd = tokens * price;
+  if (usd < 1) return null;
+  if (usd >= 1e9) return `≈$${(usd / 1e9).toFixed(2)}B`;
+  if (usd >= 1e6) return `≈$${(usd / 1e6).toFixed(2)}M`;
+  if (usd >= 1e3) return `≈$${(usd / 1e3).toFixed(1)}K`;
+  return `≈$${usd.toFixed(0)}`;
+}
+
 export function formatPct(value: number | null | undefined, decimals = 2): string {
   if (value == null || !Number.isFinite(value)) return '—';
   return `${value.toFixed(decimals)}%`;

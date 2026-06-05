@@ -22,6 +22,7 @@ export const PROPOSALS_QUERY = /* GraphQL */ `
       id
       title
       body
+      discussion
       choices
       start
       end
@@ -80,6 +81,7 @@ export interface SnapshotProposal {
   id: string;
   title: string;
   body: string | null;
+  discussion: string | null;
   choices: string[];
   start: number;
   end: number;

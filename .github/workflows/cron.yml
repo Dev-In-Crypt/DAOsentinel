@@ -14,6 +14,8 @@ on:
     - cron: '0 8 * * 1'
     # Delegate profiles rebuild — daily at 04:00 UTC (paginated)
     - cron: '0 4 * * *'
+    # Token price refresh — every 6 hours (CoinGecko free tier)
+    - cron: '0 */6 * * *'
 
   # Allow manual triggering from the Actions tab
   workflow_dispatch:
@@ -31,6 +33,7 @@ on:
           - sync-treasuries
           - send-digest
           - rebuild-delegates
+          - sync-prices
 
 concurrency:
   group: cron-${{ github.event.schedule || github.event.inputs.job }}
@@ -66,6 +69,9 @@ jobs:
               ;;
             "0 4 * * *")
               echo "endpoints=__delegates_pages__" >> $GITHUB_OUTPUT
+              ;;
+            "0 */6 * * *")
+              echo "endpoints=sync-prices" >> $GITHUB_OUTPUT
               ;;
             *)
               echo "endpoints=$MANUAL" >> $GITHUB_OUTPUT

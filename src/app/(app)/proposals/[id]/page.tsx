@@ -2,12 +2,14 @@ import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { db } from '@/server/db';
 import { proposals, daos, votes } from '@/server/db/schema';
-import { desc, eq } from 'drizzle-orm';
+import { asc, desc, eq } from 'drizzle-orm';
 import { Badge } from '@/components/ui/badge';
 import { RiskBadge } from '@/components/proposals/RiskBadge';
 import { VoteBreakdown } from '@/components/proposals/VoteBreakdown';
+import { VoteTimeline } from '@/components/proposals/VoteTimeline';
+import { QuorumBar } from '@/components/proposals/QuorumBar';
 import { ProposalBody } from '@/components/proposals/ProposalBody';
-import { formatNumber, shortenAddress, timeAgo, timeRemaining } from '@/lib/utils';
+import { formatNumber, formatUsdValue, shortenAddress, timeAgo, timeRemaining } from '@/lib/utils';
 
 export const dynamic = 'force-dynamic';
 
@@ -51,17 +53,30 @@ export default async function ProposalDetailPage({
   if (!row) notFound();
   const { proposal: p, dao } = row;
 
-  const allVotes = await db
-    .select()
-    .from(votes)
-    .where(eq(votes.proposalId, p.id))
-    .orderBy(desc(votes.votingPower))
-    .limit(200);
+  const [allVotes, timelineVotes] = await Promise.all([
+    db
+      .select()
+      .from(votes)
+      .where(eq(votes.proposalId, p.id))
+      .orderBy(desc(votes.votingPower))
+      .limit(200),
+    db
+      .select({
+        createdAt: votes.createdAt,
+        choice: votes.choice,
+        votingPower: votes.votingPower,
+      })
+      .from(votes)
+      .where(eq(votes.proposalId, p.id))
+      .orderBy(asc(votes.createdAt))
+      .limit(2000),
+  ]);
 
   const whaleVotes = allVotes.filter((v) => v.isWhale).slice(0, 12);
   const total = Number(p.scoresTotal ?? 0);
-  const quorumPct = p.quorum && Number(p.quorum) > 0 ? (total / Number(p.quorum)) * 100 : null;
   const risk = p.aiRiskLevel ? RISK_TONE[p.aiRiskLevel] : null;
+  const tokenPrice = dao.tokenPriceUsd ? Number(dao.tokenPriceUsd) : null;
+  const totalUsd = formatUsdValue(total, tokenPrice);
 
   return (
     <div className="space-y-10">
@@ -93,6 +108,19 @@ export default async function ProposalDetailPage({
           <span className="mono">
             {p.state === 'active' ? timeRemaining(p.endTimestamp) : `ended ${timeAgo(p.endTimestamp)}`}
           </span>
+          {p.discussion && (
+            <>
+              <span className="text-[hsl(var(--text-faint))]">·</span>
+              <a
+                href={p.discussion}
+                target="_blank"
+                rel="noreferrer"
+                className="text-[hsl(var(--indigo-bright))] hover:underline"
+              >
+                Discussion ↗
+              </a>
+            </>
+          )}
           {risk && (
             <>
               <span className="text-[hsl(var(--text-faint))]">·</span>
@@ -124,24 +152,19 @@ export default async function ProposalDetailPage({
           <div className="val">
             <span className="accent">{formatNumber(total)}</span>
           </div>
+          {totalUsd && (
+            <div className="mt-1 text-xs mono text-[hsl(var(--text-faint))]">{totalUsd}</div>
+          )}
         </div>
         <div className="stat-cell">
-          <div className="lab">Quorum</div>
+          <div className="lab">Token price</div>
           <div className="val">
-            {quorumPct != null ? (
-              <>
-                <span
-                  className={quorumPct >= 100 ? 'accent' : 'accent-warn'}
-                >
-                  {quorumPct.toFixed(0)}%
-                </span>
-                <span style={{ fontSize: 14, color: 'hsl(var(--text-dim))' }}>
-                  {' '}
-                  {quorumPct >= 100 ? '✓ met' : 'short'}
-                </span>
-              </>
+            {tokenPrice != null ? (
+              <span className="accent">
+                ${tokenPrice >= 100 ? tokenPrice.toFixed(0) : tokenPrice.toFixed(2)}
+              </span>
             ) : (
-              '—'
+              <span className="text-[hsl(var(--text-faint))]">—</span>
             )}
           </div>
         </div>
@@ -186,7 +209,14 @@ export default async function ProposalDetailPage({
       {/* Voting results */}
       <section>
         <h2 className="app-sec-title">Voting results</h2>
-        <div className="glass-card space-y-5">
+        <div className="glass-card space-y-6">
+          {p.quorum && Number(p.quorum) > 0 && (
+            <QuorumBar
+              current={total}
+              target={Number(p.quorum)}
+              unit={dao.governanceToken ?? undefined}
+            />
+          )}
           <VoteBreakdown
             choices={p.choices ?? []}
             scores={(p.scores as number[]) ?? []}
@@ -194,7 +224,8 @@ export default async function ProposalDetailPage({
           />
           <div className="flex flex-wrap items-center justify-between gap-2 border-t pt-4 text-xs mono text-[hsl(var(--text-dim))]" style={{ borderColor: 'hsl(var(--line))' }}>
             <span>
-              {formatNumber(total)} {dao.governanceToken ?? 'tokens'} ·{' '}
+              {formatNumber(total)} {dao.governanceToken ?? 'tokens'}
+              {totalUsd && <span className="text-[hsl(var(--text-faint))]"> · {totalUsd}</span>} ·{' '}
               {p.votesCount ?? 0} voters
             </span>
             {p.snapshotBlock && (
@@ -203,6 +234,28 @@ export default async function ProposalDetailPage({
           </div>
         </div>
       </section>
+
+      {/* Vote timeline */}
+      {timelineVotes.length >= 5 && (
+        <section>
+          <h2 className="app-sec-title">Votes over time</h2>
+          <div className="glass-card">
+            <VoteTimeline
+              votes={timelineVotes.map((v) => ({
+                createdAt: v.createdAt,
+                choice: v.choice,
+                votingPower: v.votingPower,
+              }))}
+              choices={p.choices ?? []}
+              startTimestamp={p.startTimestamp}
+              endTimestamp={p.endTimestamp}
+            />
+            <p className="mt-3 text-xs text-[hsl(var(--text-faint))] mono">
+              x-axis = % of voting window elapsed · y-axis = cumulative VP per choice
+            </p>
+          </div>
+        </section>
+      )}
 
       {/* Whale votes */}
       <section>
@@ -251,6 +304,12 @@ export default async function ProposalDetailPage({
                     <div className="text-xs mono text-[hsl(var(--text-dim))]">
                       {formatNumber(Number(v.votingPower))} VP
                     </div>
+                    {(() => {
+                      const usd = formatUsdValue(Number(v.votingPower), tokenPrice);
+                      return usd ? (
+                        <div className="text-xs mono text-[hsl(var(--text-faint))]">{usd}</div>
+                      ) : null;
+                    })()}
                   </div>
                 </div>
               );
