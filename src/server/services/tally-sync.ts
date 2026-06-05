@@ -1,4 +1,4 @@
-import { eq, isNotNull } from 'drizzle-orm';
+import { and, eq, isNotNull, ne } from 'drizzle-orm';
 import { db } from '../db';
 import { daos, proposals } from '../db/schema';
 import {
@@ -12,19 +12,38 @@ import { TRACKED_DAOS } from '@/lib/constants';
 /**
  * Mirror TRACKED_DAOS.tallyOrgId into the daos row on first run, so we don't
  * need a separate manual reseed when this feature ships to an existing DB.
+ *
+ * If a DAO already has a tally_org_id but it differs from the constant
+ * (i.e. the constant got corrected after we'd already ingested proposals
+ * under the wrong org), wipe its source='tally' rows so the next fetch
+ * re-populates against the correct organisation. Without this, proposals
+ * that originally belonged to org A would stay stuck on the DAO that's now
+ * pointed at org B.
  */
-async function backfillTallyOrgIds(): Promise<number> {
+async function backfillTallyOrgIds(): Promise<{ touched: number; wiped: number }> {
   let touched = 0;
+  let wiped = 0;
   for (const t of TRACKED_DAOS) {
     if (!t.tallyOrgId) continue;
-    const res = await db
-      .update(daos)
-      .set({ tallyOrgId: t.tallyOrgId })
+    const [row] = await db
+      .select({ id: daos.id, currentOrgId: daos.tallyOrgId })
+      .from(daos)
       .where(eq(daos.slug, t.slug))
-      .returning({ id: daos.id });
-    if (res.length) touched++;
+      .limit(1);
+    if (!row) continue;
+
+    if (row.currentOrgId && row.currentOrgId !== t.tallyOrgId) {
+      const del = await db
+        .delete(proposals)
+        .where(and(eq(proposals.daoId, row.id), eq(proposals.source, 'tally')))
+        .returning({ id: proposals.id });
+      wiped += del.length;
+    }
+
+    await db.update(daos).set({ tallyOrgId: t.tallyOrgId }).where(eq(daos.id, row.id));
+    touched++;
   }
-  return touched;
+  return { touched, wiped };
 }
 
 interface TallySyncResult {
@@ -34,6 +53,7 @@ interface TallySyncResult {
   skipped: number;
   errors: number;
   skipReason?: string;
+  wiped?: number;
 }
 
 /**
@@ -63,7 +83,11 @@ export async function syncTallyProposals(opts: {
   // First page also lazily backfills tally_org_id from constants
   if (offset === 0) {
     try {
-      await backfillTallyOrgIds();
+      const bf = await backfillTallyOrgIds();
+      result.wiped = bf.wiped;
+      if (bf.wiped) {
+        console.log(`[tally-sync] wiped ${bf.wiped} mis-attributed proposals`);
+      }
     } catch (e) {
       console.warn('[tally-sync] backfill skipped', (e as Error).message);
     }
@@ -196,4 +220,4 @@ function bucket(stats: Array<{ type: string; votesCount: string }>, type: string
 }
 
 // Re-export for callers that need it
-export { eq };
+export { eq, ne };

@@ -35,11 +35,12 @@ export interface TrackedDao {
 
 // Initial top-tier DAO list. Easily expandable; sync will fail-soft on bad spaces.
 export const TRACKED_DAOS: TrackedDao[] = [
-  { snapshotSpaceId: 'uniswapgovernance.eth', name: 'Uniswap', slug: 'uniswap', chain: 'ethereum', token: 'UNI', website: 'https://uniswap.org', tallyOrgId: '2206072050315953936' },
-  { snapshotSpaceId: 'aave.eth', name: 'Aave', slug: 'aave', chain: 'ethereum', token: 'AAVE', website: 'https://aave.com', tallyOrgId: '2206072050458560434' },
-  { snapshotSpaceId: 'ens.eth', name: 'ENS', slug: 'ens', chain: 'ethereum', token: 'ENS', website: 'https://ens.domains', tallyOrgId: '2206072049313620911' },
-  { snapshotSpaceId: 'arbitrumfoundation.eth', name: 'Arbitrum', slug: 'arbitrum', chain: 'arbitrum', token: 'ARB', website: 'https://arbitrum.foundation', tallyOrgId: '2206072050315953754' },
-  { snapshotSpaceId: 'opcollective.eth', name: 'Optimism', slug: 'optimism', chain: 'optimism', token: 'OP', website: 'https://optimism.io', tallyOrgId: '2206072050458560426' },
+  // Tally org IDs verified against api.tally.xyz/query → organization(input:{slug}).
+  { snapshotSpaceId: 'uniswapgovernance.eth', name: 'Uniswap', slug: 'uniswap', chain: 'ethereum', token: 'UNI', website: 'https://uniswap.org', tallyOrgId: '2206072050458560434' },
+  { snapshotSpaceId: 'aave.eth', name: 'Aave', slug: 'aave', chain: 'ethereum', token: 'AAVE', website: 'https://aave.com', tallyOrgId: '2206072049829414624' },
+  { snapshotSpaceId: 'ens.eth', name: 'ENS', slug: 'ens', chain: 'ethereum', token: 'ENS', website: 'https://ens.domains', tallyOrgId: '2206072050458560426' },
+  { snapshotSpaceId: 'arbitrumfoundation.eth', name: 'Arbitrum', slug: 'arbitrum', chain: 'arbitrum', token: 'ARB', website: 'https://arbitrum.foundation', tallyOrgId: '2206072050315953936' },
+  { snapshotSpaceId: 'opcollective.eth', name: 'Optimism', slug: 'optimism', chain: 'optimism', token: 'OP', website: 'https://optimism.io', tallyOrgId: '2206072049871356990' },
   { snapshotSpaceId: 'gitcoindao.eth', name: 'Gitcoin', slug: 'gitcoin', chain: 'ethereum', token: 'GTC', website: 'https://gitcoin.co' },
   { snapshotSpaceId: 'apecoin.eth', name: 'ApeCoin', slug: 'apecoin', chain: 'ethereum', token: 'APE', website: 'https://apecoin.com' },
   { snapshotSpaceId: 'balancer.eth', name: 'Balancer', slug: 'balancer', chain: 'ethereum', token: 'BAL', website: 'https://balancer.fi' },
@@ -49,7 +50,7 @@ export const TRACKED_DAOS: TrackedDao[] = [
   { snapshotSpaceId: 'snapshot.dcl.eth', name: 'Decentraland', slug: 'decentraland', chain: 'ethereum', token: 'MANA', website: 'https://decentraland.org' },
   { snapshotSpaceId: 'gnosis.eth', name: 'Gnosis', slug: 'gnosis', chain: 'gnosis', token: 'GNO', website: 'https://gnosis.io' },
   { snapshotSpaceId: 'safe.eth', name: 'Safe', slug: 'safe', chain: 'ethereum', token: 'SAFE', website: 'https://safe.global' },
-  { snapshotSpaceId: 'comp-vote.eth', name: 'Compound', slug: 'compound', chain: 'ethereum', token: 'COMP', website: 'https://compound.finance', tallyOrgId: '2206072050022352213' },
+  { snapshotSpaceId: 'comp-vote.eth', name: 'Compound', slug: 'compound', chain: 'ethereum', token: 'COMP', website: 'https://compound.finance', tallyOrgId: '2206072050458560433' },
   { snapshotSpaceId: 'stgdao.eth', name: 'Stargate', slug: 'stargate', chain: 'ethereum', token: 'STG', website: 'https://stargate.finance' },
   { snapshotSpaceId: '1inch.eth', name: '1inch', slug: '1inch', chain: 'ethereum', token: '1INCH', website: 'https://1inch.io' },
   { snapshotSpaceId: 'rocketpool-dao.eth', name: 'Rocket Pool', slug: 'rocket-pool', chain: 'ethereum', token: 'RPL', website: 'https://rocketpool.net' },
@@ -70,7 +71,8 @@ export const TRACKED_DAOS: TrackedDao[] = [
   { snapshotSpaceId: 'beets.eth', name: 'Beethoven X', slug: 'beethoven-x', chain: 'fantom', token: 'BEETS' },
   { snapshotSpaceId: 'btrfly.eth', name: 'Redacted Cartel', slug: 'redacted', chain: 'ethereum', token: 'BTRFLY' },
   { snapshotSpaceId: 'chainflip-gov.eth', name: 'Chainflip', slug: 'chainflip', chain: 'ethereum', token: 'FLIP' },
-  { snapshotSpaceId: 'dydxgov.eth', name: 'dYdX', slug: 'dydx', chain: 'ethereum', token: 'DYDX', website: 'https://dydx.exchange', tallyOrgId: '2206072050022352230' },
+  // dYdX has no canonical Tally org (Snapshot only). Leave tallyOrgId unset.
+  { snapshotSpaceId: 'dydxgov.eth', name: 'dYdX', slug: 'dydx', chain: 'ethereum', token: 'DYDX', website: 'https://dydx.exchange' },
   { snapshotSpaceId: 'enssecuritycouncil.eth', name: 'ENS Security Council', slug: 'ens-security', chain: 'ethereum', token: 'ENS' },
   { snapshotSpaceId: 'metricsdao.eth', name: 'MetricsDAO', slug: 'metrics-dao', chain: 'ethereum', token: 'MET' },
   { snapshotSpaceId: 'nftx.eth', name: 'NFTX', slug: 'nftx', chain: 'ethereum', token: 'NFTX' },
