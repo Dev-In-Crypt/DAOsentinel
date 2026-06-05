@@ -34,6 +34,7 @@ on:
           - send-digest
           - rebuild-delegates
           - sync-prices
+          - sync-tally
 
 concurrency:
   group: cron-${{ github.event.schedule || github.event.inputs.job }}
@@ -53,7 +54,7 @@ jobs:
 
           case "$SCHED" in
             "*/5 * * * *")
-              echo "endpoints=sync-proposals,__votes_pages__" >> $GITHUB_OUTPUT
+              echo "endpoints=sync-proposals,__votes_pages__,__tally_pages__" >> $GITHUB_OUTPUT
               ;;
             "*/15 * * * *")
               echo "endpoints=generate-summaries" >> $GITHUB_OUTPUT
@@ -102,6 +103,10 @@ jobs:
           if [ "$ENDPOINTS" = "sync-votes" ]; then
             ENDPOINTS="__votes_pages__"
           fi
+          # workflow_dispatch with sync-tally → also paginated path
+          if [ "$ENDPOINTS" = "sync-tally" ]; then
+            ENDPOINTS="__tally_pages__"
+          fi
 
           # Helper: walk paginated cron endpoint until done:true
           # Args: 1=label  2=endpoint  3=limit  4=max_pages
@@ -145,6 +150,10 @@ jobs:
             fi
             if [ "$job" = "__votes_pages__" ]; then
               walk_pages "sync-votes" "sync-votes" 5 12 || true
+              continue
+            fi
+            if [ "$job" = "__tally_pages__" ]; then
+              walk_pages "sync-tally" "sync-tally" 10 8 || true
               continue
             fi
 

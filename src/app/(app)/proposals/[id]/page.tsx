@@ -9,6 +9,7 @@ import { VoteBreakdown } from '@/components/proposals/VoteBreakdown';
 import { VoteTimeline } from '@/components/proposals/VoteTimeline';
 import { QuorumBar } from '@/components/proposals/QuorumBar';
 import { ProposalBody } from '@/components/proposals/ProposalBody';
+import { SimilarProposals } from '@/components/proposals/SimilarProposals';
 import { formatNumber, formatUsdValue, shortenAddress, timeAgo, timeRemaining } from '@/lib/utils';
 
 export const dynamic = 'force-dynamic';
@@ -188,15 +189,23 @@ export default async function ProposalDetailPage({
                   <p className="text-base text-[hsl(var(--text))]">{p.aiImpact}</p>
                 </div>
               )}
-              <a
-                href={`https://snapshot.org/#/${dao.snapshotSpaceId}/proposal/${p.externalId}`}
-                target="_blank"
-                rel="noreferrer"
-                className="btn-mc btn-mc-ghost"
-                style={{ padding: '10px 18px', fontSize: 14 }}
-              >
-                Read full proposal on Snapshot ↗
-              </a>
+              {(() => {
+                const isTally = p.source === 'tally';
+                const href = isTally
+                  ? `https://www.tally.xyz/gov/${dao.tallyOrgId ?? ''}/proposal/${p.externalId}`
+                  : `https://snapshot.org/#/${dao.snapshotSpaceId}/proposal/${p.externalId}`;
+                return (
+                  <a
+                    href={href}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="btn-mc btn-mc-ghost"
+                    style={{ padding: '10px 18px', fontSize: 14 }}
+                  >
+                    Read full proposal on {isTally ? 'Tally' : 'Snapshot'} ↗
+                  </a>
+                );
+              })()}
             </>
           ) : (
             <p className="text-sm text-[hsl(var(--text-dim))]">
@@ -327,6 +336,12 @@ export default async function ProposalDetailPage({
           </div>
           <ProposalBody body={p.body} />
         </div>
+      </section>
+
+      {/* Similar past proposals (semantic match via embeddings) */}
+      <section>
+        <h2 className="app-sec-title">📚 Similar past proposals</h2>
+        <SimilarProposals proposalId={p.id} />
       </section>
     </div>
   );

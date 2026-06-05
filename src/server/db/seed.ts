@@ -12,6 +12,7 @@ async function main() {
       .insert(daos)
       .values({
         snapshotSpaceId: dao.snapshotSpaceId,
+        tallyOrgId: dao.tallyOrgId,
         name: dao.name,
         slug: dao.slug,
         chain: dao.chain,
@@ -26,6 +27,7 @@ async function main() {
           chain: dao.chain,
           governanceToken: dao.token,
           website: dao.website,
+          tallyOrgId: dao.tallyOrgId,
           updatedAt: sql`now()`,
         },
       });
