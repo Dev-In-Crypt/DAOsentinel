@@ -3,8 +3,8 @@ import { BrandMark } from './BrandMark';
 
 const COLS = [
   { h: 'Platform', links: [['Whale detection', '/alerts'], ['Turnout analytics', '/daos'], ['Delegate maps', '/delegates'], ['Weekly digest', '/digest']] },
-  { h: 'Resources', links: [['Docs', '/docs'], ['Democracy Score', '/daos'], ['API reference', '/api-docs'], ['Roadmap', '/roadmap']] },
-  { h: 'Company', links: [['Pricing', '/pricing'], ['Source code', 'https://github.com/Dev-In-Crypt/GovWatch'], ['Contact', 'mailto:hello@daosentinel.xyz']] },
+  { h: 'Analytics', links: [['Compare DAOs', '/compare'], ['Voting blocs', '/delegates/blocs'], ['Democracy Score', '/daos'], ['Roadmap', '/roadmap']] },
+  { h: 'Resources', links: [['Docs', '/docs'], ['API reference', '/api-docs'], ['Pricing', '/pricing'], ['Source code', 'https://github.com/Dev-In-Crypt/GovWatch']] },
 ] as const;
 
 export function Footer() {

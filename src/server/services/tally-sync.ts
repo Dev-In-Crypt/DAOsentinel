@@ -101,8 +101,25 @@ export async function syncTallyProposals(opts: {
 
     for (const p of nodes) {
       try {
-        const title = p.metadata?.title?.slice(0, 500) ?? `Proposal ${p.onchainId ?? p.id}`;
+        const rawTitle = p.metadata?.title?.trim() ?? '';
         const body = p.metadata?.description ?? null;
+        // On-chain Governors (esp. Compound) sometimes store stub titles like
+        // "0x0" or "Proposal" — fall back to the first meaningful line of the
+        // description, then to a derived "{DAO} proposal #onchainId" label.
+        const isStubTitle =
+          !rawTitle ||
+          rawTitle.length < 6 ||
+          /^(0x[0-9a-f]*|proposal|untitled)$/i.test(rawTitle);
+        const firstDescLine = (body ?? '')
+          .replace(/^[#\s>*_-]+/gm, '')
+          .split(/\r?\n/)
+          .map((l) => l.trim())
+          .find((l) => l.length >= 8 && l.length <= 200);
+        const title = (
+          isStubTitle
+            ? firstDescLine ?? `${dao.name} proposal #${p.onchainId ?? p.id}`
+            : rawTitle
+        ).slice(0, 500);
         const state = mapTallyState(p.status);
         const startTs = tallyTsToDate(p.start?.timestamp) ?? new Date(0);
         const endTs = tallyTsToDate(p.end?.timestamp) ?? new Date(0);
