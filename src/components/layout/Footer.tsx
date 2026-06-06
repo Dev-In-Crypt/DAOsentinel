@@ -35,7 +35,13 @@ export function Footer() {
         </div>
         <div className="foot-bottom">
           <span>© 2026 DAO Sentinel Labs · Built for governance vigilance</span>
-          <span>Data from Snapshot &amp; on-chain sources</span>
+          <span className="foot-legal">
+            <Link href="/privacy">Privacy</Link>
+            <span aria-hidden>·</span>
+            <Link href="/terms">Terms</Link>
+            <span aria-hidden>·</span>
+            <span>Data from Snapshot, Tally &amp; on-chain sources</span>
+          </span>
         </div>
       </div>
     </footer>

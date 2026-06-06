@@ -933,6 +933,48 @@ section.block {
   font-size: clamp(15px, 1.6vw, 18px);
 }
 
+/* Legal prose (privacy / terms) */
+.legal-prose {
+  color: hsl(var(--text-dim));
+  font-size: 15px;
+  line-height: 1.72;
+}
+.legal-prose h2 {
+  color: hsl(var(--text));
+  font-family: var(--font-space-grotesk), system-ui, sans-serif;
+  font-size: 20px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  margin: 34px 0 12px;
+}
+.legal-prose p {
+  margin: 0 0 14px;
+}
+.legal-prose ul {
+  margin: 0 0 16px;
+  padding-left: 20px;
+  list-style: disc;
+}
+.legal-prose li {
+  margin: 0 0 8px;
+}
+.legal-prose strong {
+  color: hsl(var(--text));
+  font-weight: 600;
+}
+.legal-prose a {
+  color: hsl(var(--indigo-bright));
+  text-decoration: none;
+}
+.legal-prose a:hover {
+  text-decoration: underline;
+}
+.legal-prose code {
+  font-family: var(--font-jetbrains-mono), ui-monospace, monospace;
+  font-size: 13px;
+  color: hsl(var(--cyan));
+}
+
 /* Features */
 .feat-grid {
   display: grid;
@@ -1291,6 +1333,18 @@ section.block {
   flex-wrap: wrap;
   gap: 12px;
 }
+.foot-legal {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.foot-legal a {
+  color: hsl(var(--text-faint));
+  text-decoration: none;
+  transition: color 0.2s;
+}
+.foot-legal a:hover { color: hsl(var(--indigo-bright)); }
 
 @media (max-width: 980px) {
   .feat-grid, .price-grid, .pipe { grid-template-columns: 1fr; }
