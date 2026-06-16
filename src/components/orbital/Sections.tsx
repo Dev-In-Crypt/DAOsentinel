@@ -217,37 +217,13 @@ export function SocialProof() {
     <section className="block container-mc">
       <div className="sec-head center reveal">
         <span className="eyebrow" style={{ justifyContent: 'center' }}>
-          Trusted by stewards
+          Coverage
         </span>
-        <h2>Delegates and foundations run on DAO Sentinel.</h2>
-      </div>
-      <div className="quotes">
-        <div className="quote-card feature reveal">
-          <blockquote>
-            "We caught a coordinated delegation attack 40 minutes before the vote closed.
-            DAO Sentinel's whale alert paid for itself a hundred times over that day."
-          </blockquote>
-          <div className="quote-who">
-            <div className="qw-av">MR</div>
-            <div>
-              <div className="qw-name">Maya Reyes</div>
-              <div className="qw-role">Lead Delegate · DeFi collective</div>
-            </div>
-          </div>
-        </div>
-        <div className="quote-card reveal" style={{ transitionDelay: '90ms' }}>
-          <blockquote>
-            "The Democracy Score is now in our quarterly board deck. It's the first governance
-            metric our LPs actually understand."
-          </blockquote>
-          <div className="quote-who">
-            <div className="qw-av">TK</div>
-            <div>
-              <div className="qw-name">Tomas Kael</div>
-              <div className="qw-role">Foundation Ops · L2 ecosystem</div>
-            </div>
-          </div>
-        </div>
+        <h2>Monitoring the DAOs that move the ecosystem.</h2>
+        <p>
+          Live governance data across 50+ DAOs on Snapshot and on-chain Tally governors —
+          refreshed every five minutes.
+        </p>
       </div>
       <div className="logos-row reveal">
         {logos.map((l) => (
