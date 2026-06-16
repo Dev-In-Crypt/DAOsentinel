@@ -33,16 +33,21 @@ export default function DocsPage() {
             <h2 className="app-sec-title">Data sources</h2>
             <ul className="space-y-2 text-sm text-[hsl(var(--text-dim))]">
               <li>
-                <strong className="text-[hsl(var(--text))]">Snapshot GraphQL</strong> — proposals
-                and votes for 50 monitored DAOs, polled every 5 minutes.
+                <strong className="text-[hsl(var(--text))]">Snapshot GraphQL</strong> — off-chain
+                proposals and votes for 50 monitored DAOs, polled every 5 minutes.
               </li>
               <li>
-                <strong className="text-[hsl(var(--text))]">DeFiLlama Treasury API</strong> — DAO
-                treasury USD value, refreshed daily.
+                <strong className="text-[hsl(var(--text))]">Tally API</strong> — on-chain Governor
+                proposals (Compound, Uniswap, ENS, Arbitrum, Optimism, Aave), so we cover DAOs that
+                vote on-chain rather than via Snapshot.
               </li>
               <li>
-                <strong className="text-[hsl(var(--text))]">ENS resolution</strong> via
-                ensideas.com — to put names on top-100 delegates.
+                <strong className="text-[hsl(var(--text))]">DeFiLlama &amp; CoinGecko</strong> — DAO
+                treasury USD value (daily) and governance-token prices (every 6 hours).
+              </li>
+              <li>
+                <strong className="text-[hsl(var(--text))]">ENS &amp; Karma</strong> — names and
+                third-party reputation scores layered onto top delegate profiles.
               </li>
               <li>
                 <strong className="text-[hsl(var(--text))]">No proprietary data</strong> — everything
