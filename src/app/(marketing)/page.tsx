@@ -6,7 +6,7 @@ import {
   PipelineSection,
   MetricsBand,
   SocialProof,
-  PricingSection,
+  PublicGoodSection,
   NewsletterSection,
   FinalCTA,
   RevealOnScroll,
@@ -39,7 +39,7 @@ export default async function LandingPage() {
           votesTracked={data.stats.votesTracked}
         />
         <SocialProof />
-        <PricingSection />
+        <PublicGoodSection />
         <NewsletterSection />
         <FinalCTA />
       </main>

@@ -240,101 +240,61 @@ export function SocialProof() {
   );
 }
 
-const TIERS = [
-  {
-    name: 'Observer',
-    amt: '$0',
-    per: '/forever',
-    pop: false,
-    desc: 'Watch the universe. Public dashboards for everyone.',
-    cta: 'Get started',
-    ghost: true,
-    feats: [
-      ['5 DAOs on your watchlist', 1],
-      ['Weekly Democracy Score digest', 1],
-      ['Public proposal feed + AI summaries', 1],
-      ['Whale alerts (hourly batch)', 0],
-      ['API access', 0],
-    ] as Array<[string, number]>,
-    href: '/dashboard',
-  },
-  {
-    name: 'Delegate Pro',
-    amt: '$99',
-    per: '/month',
-    pop: true,
-    desc: 'For delegates and researchers who act on the data.',
-    cta: 'Start subscription',
-    ghost: false,
-    feats: [
-      ['Unlimited DAO watchlist', 1],
-      ['Real-time whale alerts', 1],
-      ['Telegram · Discord · webhook', 1],
-      ['Coordinated voting detection', 1],
-      ['API · 1,000 calls/mo', 1],
-    ] as Array<[string, number]>,
-    href: '/pricing',
-  },
-  {
-    name: 'Fund Suite',
-    amt: '$399',
-    per: '/month',
-    pop: false,
-    desc: 'For foundations, funds, and protocol teams.',
-    cta: 'Talk to us',
-    ghost: true,
-    feats: [
-      ['Everything in Delegate Pro', 1],
-      ['Portfolio governance dashboard', 1],
-      ['Voting power simulation', 1],
-      ['API · 10,000 calls/mo', 1],
-      ['Dedicated governance analyst', 1],
-    ] as Array<[string, number]>,
-    href: '/pricing',
-  },
+const PUBLIC_GOOD_FEATS = [
+  'Full DAO watchlist — no limits',
+  'Real-time whale, swing & quorum alerts',
+  'Weekly Democracy Score digest',
+  'Proposal feed + AI summaries',
+  'Cross-DAO voting-bloc analytics',
+  'Open REST API for everyone',
 ];
 
-export function PricingSection() {
+export function PublicGoodSection() {
   return (
-    <section className="block container-mc" id="pricing">
+    <section className="block container-mc" id="open">
       <div className="sec-head center reveal">
         <span className="eyebrow" style={{ justifyContent: 'center' }}>
-          Pricing
+          A public good
         </span>
-        <h2>Free for everyone.</h2>
-        <p>Scale up when governance integrity becomes mission-critical.</p>
+        <h2>Free for everyone. Forever.</h2>
+        <p>
+          DAO Sentinel is built as public-goods infrastructure for the governance commons. Every
+          feature is free, with no paywalls, no &ldquo;pro&rdquo; tier, and no data resale — funded
+          by ecosystem grants, not subscriptions.
+        </p>
       </div>
-      <div className="price-grid">
-        {TIERS.map((t, i) => (
-          <div
-            className={'price-card reveal' + (t.pop ? ' pop' : '')}
-            key={t.name}
-            style={{ transitionDelay: i * 80 + 'ms' }}
+      <div
+        className="reveal mx-auto max-w-3xl rounded-2xl p-8 md:p-10"
+        style={{
+          background: 'linear-gradient(165deg, hsl(var(--indigo) / 0.12), hsl(var(--panel) / 0.5))',
+          boxShadow: 'inset 0 0 0 1px hsl(var(--indigo) / 0.26), 0 24px 60px -30px rgba(0,0,0,0.6)',
+        }}
+      >
+        <ul className="price-feats" style={{ marginTop: 0 }}>
+          {PUBLIC_GOOD_FEATS.map((label) => (
+            <li key={label}>
+              <span className="ck">✓</span>
+              {label}
+            </li>
+          ))}
+        </ul>
+        <div
+          className="mt-8 flex flex-wrap justify-center gap-3"
+          style={{ borderTop: '1px solid hsl(var(--line))', paddingTop: 24 }}
+        >
+          <a className="btn-mc btn-mc-primary" style={{ justifyContent: 'center' }} href="/dashboard">
+            Open the dashboard
+          </a>
+          <a
+            className="btn-mc btn-mc-ghost"
+            style={{ justifyContent: 'center' }}
+            href="https://github.com/Dev-In-Crypt/DAOsentinel"
+            target="_blank"
+            rel="noreferrer"
           >
-            {t.pop && <span className="pill price-badge">Most popular</span>}
-            <div className="price-name">{t.name}</div>
-            <div className="price-amt">
-              {t.amt}
-              <span className="per">{t.per}</span>
-            </div>
-            <div className="price-desc">{t.desc}</div>
-            <a
-              className={'btn-mc ' + (t.ghost ? 'btn-mc-ghost' : 'btn-mc-primary')}
-              style={{ justifyContent: 'center', width: '100%' }}
-              href={t.href}
-            >
-              {t.cta}
-            </a>
-            <ul className="price-feats">
-              {t.feats.map(([label, on], j) => (
-                <li className={on ? '' : 'muted'} key={j}>
-                  <span className="ck">{on ? '✓' : '○'}</span>
-                  {label}
-                </li>
-              ))}
-            </ul>
-          </div>
-        ))}
+            View source on GitHub ↗
+          </a>
+        </div>
       </div>
     </section>
   );
