@@ -63,7 +63,6 @@ export default function PrivacyPage() {
           <ul>
             <li>To authenticate you and keep you signed in.</li>
             <li>To deliver the alerts and weekly digest you subscribed to.</li>
-            <li>To provide and bill for paid features.</li>
             <li>To monitor reliability and improve the product in aggregate.</li>
           </ul>
 
