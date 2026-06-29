@@ -263,6 +263,7 @@ export const users = pgTable('users', {
   alertEmail: boolean('alert_email').default(true),
   alertTelegram: boolean('alert_telegram').default(false),
   telegramChatId: text('telegram_chat_id'),
+  discordWebhookUrl: text('discord_webhook_url'),
 
   apiKey: text('api_key').unique(),
   apiCallsThisMonth: integer('api_calls_this_month').default(0),

@@ -1,4 +1,4 @@
-import { eq, and, arrayContains } from 'drizzle-orm';
+import { eq, and, arrayContains, isNotNull } from 'drizzle-orm';
 import { Resend } from 'resend';
 import { db } from '../db';
 import { users, alerts, daos } from '../db/schema';
@@ -7,6 +7,7 @@ import type { Alert, Dao } from '../db/schema';
 import { notifyAlert } from '../db/notify';
 import { renderWhaleAlert } from '../email/render';
 import { sendTelegramMessage } from '@/lib/telegram';
+import { sendDiscordAlert } from '@/lib/discord';
 const resend = process.env.RESEND_API_KEY ? new Resend(process.env.RESEND_API_KEY) : null;
 const EMAIL_FROM = process.env.EMAIL_FROM ?? 'DAO Sentinel <noreply@daosentinel.xyz>';
 const APP_BASE = process.env.NEXTAUTH_URL || 'https://www.daosentinel.xyz';
@@ -57,19 +58,43 @@ export async function publishAlert(alertId: string): Promise<void> {
     }
   }
 
-  // 2. Discord webhook
-  if (process.env.DISCORD_WEBHOOK_URL && alert.severity !== 'info') {
+  // 2. Discord delivery (warning/critical only).
+  if (alert.severity !== 'info') {
+    const link = alert.proposalId
+      ? `${APP_BASE}/proposals/${alert.proposalId}`
+      : `${APP_BASE}/daos/${dao.slug}`;
+    const payload = {
+      title: alert.title,
+      description: alert.description,
+      url: link,
+      severity: alert.severity as 'warning' | 'critical',
+    };
+
+    // 2a. Global server-wide webhook (optional).
+    if (process.env.DISCORD_WEBHOOK_URL) {
+      try {
+        await sendDiscordAlert(process.env.DISCORD_WEBHOOK_URL, payload);
+      } catch (err) {
+        console.error('global discord publish failed', err);
+      }
+    }
+
+    // 2b. Per-user webhooks for watchers who configured one.
     try {
-      await fetch(process.env.DISCORD_WEBHOOK_URL, {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({
-          username: 'DAO Sentinel',
-          content: `**${alert.title}**\n${alert.description}`,
-        }),
-      });
+      const subs = await db
+        .select({ url: users.discordWebhookUrl })
+        .from(users)
+        .where(
+          and(
+            isNotNull(users.discordWebhookUrl),
+            arrayContains(users.watchedDaos, [dao.slug]),
+          ),
+        );
+      for (const s of subs) {
+        if (s.url) await sendDiscordAlert(s.url, payload);
+      }
     } catch (err) {
-      console.error('discord publish failed', err);
+      console.error('per-user discord publish failed', err);
     }
   }
 

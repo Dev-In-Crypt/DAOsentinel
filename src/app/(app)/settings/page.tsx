@@ -8,6 +8,7 @@ import { PageHeader } from '@/components/layout/PageHeader';
 import { WatchlistEditor } from './WatchlistEditor';
 import { ApiKeyManager } from './ApiKeyManager';
 import { TelegramConnect } from './TelegramConnect';
+import { DiscordConnect } from './DiscordConnect';
 import { connectLink } from '@/lib/telegram';
 
 export const dynamic = 'force-dynamic';
@@ -79,6 +80,13 @@ export default async function SettingsPage() {
             initialChatId={user.telegramChatId ?? null}
             initialEnabled={Boolean(user.alertTelegram)}
           />
+        </div>
+      </section>
+
+      <section>
+        <h2 className="app-sec-title">Discord alerts</h2>
+        <div className="glass-card">
+          <DiscordConnect initialUrl={user.discordWebhookUrl ?? null} />
         </div>
       </section>
 
