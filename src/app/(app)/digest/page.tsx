@@ -5,7 +5,9 @@ import { desc } from 'drizzle-orm';
 import { Badge } from '@/components/ui/badge';
 import { PageHeader } from '@/components/layout/PageHeader';
 
-export const revalidate = 60; // ISR — public page, data changes on cron cadence
+// Dynamic: this no-param page queries the DB per request. ISR would force a
+// build-time prerender that hits the database — which fails in CI (no DB).
+export const dynamic = 'force-dynamic';
 
 export const metadata = {
   title: 'Weekly Digest — DAO Sentinel',

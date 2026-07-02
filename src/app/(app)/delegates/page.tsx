@@ -6,7 +6,10 @@ import { Badge } from '@/components/ui/badge';
 import { PageHeader } from '@/components/layout/PageHeader';
 import { formatNumber, shortenAddress } from '@/lib/utils';
 
-export const revalidate = 60; // ISR — public page, data changes on cron cadence
+// Dynamic: this no-param page queries the DB per request. ISR would force a
+// build-time prerender that hits the database — which fails in CI (no DB).
+// The per-entity detail pages carry the ISR caching instead.
+export const dynamic = 'force-dynamic';
 
 export const metadata = {
   title: 'Delegates — DAO Sentinel',
