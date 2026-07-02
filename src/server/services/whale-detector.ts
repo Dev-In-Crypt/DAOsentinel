@@ -1,4 +1,4 @@
-import { eq, and, lt, gt, isNull, desc, sql } from 'drizzle-orm';
+import { eq, and, lt, gt, isNull, desc, inArray, sql } from 'drizzle-orm';
 import { db } from '../db';
 import { alerts, proposals, votes, daos } from '../db/schema';
 import {
@@ -30,12 +30,26 @@ export async function processNewWhaleVotes(): Promise<number> {
     .orderBy(desc(votes.createdAt))
     .limit(500);
 
+  // Batch dedup: ONE query for all candidate proposals instead of one
+  // JSONB-scan per whale vote (was up to 500 queries per tick).
+  const proposalIds = [...new Set(recentWhales.map((r) => r.proposal.id))];
+  const existingAlerts = proposalIds.length
+    ? await db
+        .select({
+          proposalId: alerts.proposalId,
+          voter: sql<string>`${alerts.data} ->> 'voter'`,
+        })
+        .from(alerts)
+        .where(and(eq(alerts.type, 'whale_vote'), inArray(alerts.proposalId, proposalIds)))
+    : [];
+  const seen = new Set(existingAlerts.map((e) => `${e.proposalId}:${e.voter}`));
+
   let created = 0;
   for (const row of recentWhales) {
     const { vote, proposal, dao } = row;
-    const dupKey = sql`${alerts.data} ->> 'voter' = ${vote.voterAddress.toLowerCase()} AND ${alerts.proposalId} = ${proposal.id} AND ${alerts.type} = 'whale_vote'`;
-    const [existing] = await db.select().from(alerts).where(dupKey).limit(1);
-    if (existing) continue;
+    const dedupKey = `${proposal.id}:${vote.voterAddress.toLowerCase()}`;
+    if (seen.has(dedupKey)) continue;
+    seen.add(dedupKey); // also guards against duplicates within this batch
 
     const vpPct = Number(vote.votingPowerPct ?? 0);
     const severity =

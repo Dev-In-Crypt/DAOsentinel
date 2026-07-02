@@ -1,4 +1,4 @@
-import { eq, and, inArray } from 'drizzle-orm';
+import { eq, and, gt, inArray } from 'drizzle-orm';
 import { db } from '../db';
 import { daos, proposals, votes } from '../db/schema';
 import {
@@ -226,19 +226,16 @@ export async function syncAllActiveVotes(
 
 export async function syncRecentlyClosedVotes(): Promise<{ proposals: number; votes: number }> {
   const since = new Date(Date.now() - 24 * 3600 * 1000);
+  // Filter in SQL — the closed set grows forever, the recent window doesn't.
   const closed = await db
     .select()
     .from(proposals)
-    .where(and(eq(proposals.state, 'closed')));
+    .where(and(eq(proposals.state, 'closed'), gt(proposals.endTimestamp, since)));
   let totalVotes = 0;
-  let processed = 0;
   for (const p of closed) {
-    if (p.endTimestamp >= since) {
-      totalVotes += await syncVotesForProposal(p.externalId);
-      processed++;
-    }
+    totalVotes += await syncVotesForProposal(p.externalId);
   }
-  return { proposals: processed, votes: totalVotes };
+  return { proposals: closed.length, votes: totalVotes };
 }
 
 function normaliseChoice(choice: SnapshotVote['choice']): number {

@@ -1,6 +1,7 @@
 'use client';
 import { useEffect, useRef, useState } from 'react';
 import type { WhaleCardData } from '@/server/landing-data';
+import { timeAgo } from '@/lib/utils';
 
 interface WhaleCard {
   key: number;
@@ -17,11 +18,6 @@ function shorten(addr: string): string {
   if (!addr || addr.includes('…')) return addr;
   if (addr.includes('.')) return addr;
   return addr.length > 12 ? `${addr.slice(0, 6)}…${addr.slice(-4)}` : addr;
-}
-
-function ago(born: number): string {
-  const s = Math.max(0, Math.round((Date.now() - born) / 1000));
-  return s < 1 ? 'now' : `${s}s ago`;
 }
 
 export function WhaleFeed({ initial = [] }: { initial?: WhaleCardData[] }) {
@@ -123,7 +119,7 @@ function WhaleCardView({ card }: { card: WhaleCard }) {
       <div className="wc-top">
         <div className="wc-icon">🐋</div>
         <span className="wc-tag">Whale Vote</span>
-        <span className="wc-time">{ago(card.born)}</span>
+        <span className="wc-time">{timeAgo(card.born)}</span>
       </div>
       <div className="wc-body">
         <b>{card.wallet}</b> cast <b>{card.votes}</b> votes on{' '}
