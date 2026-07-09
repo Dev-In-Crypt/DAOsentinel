@@ -140,6 +140,33 @@ export function mapTallyState(status: string): 'pending' | 'active' | 'closed' {
   return 'closed';
 }
 
+/**
+ * Derive a human title for a Tally proposal. On-chain Governors (especially
+ * Compound) sometimes store stub titles like "0x0", "Proposal", or "" — fall
+ * back to the first meaningful line of the description, then to a derived
+ * "{DAO} proposal #{id}" label. Pure; extracted from tally-sync for testing.
+ */
+export function deriveTallyTitle(
+  rawTitleInput: string | null | undefined,
+  body: string | null | undefined,
+  daoName: string,
+  fallbackId: string,
+): string {
+  const rawTitle = rawTitleInput?.trim() ?? '';
+  const isStubTitle =
+    !rawTitle ||
+    rawTitle.length < 6 ||
+    /^(0x[0-9a-f]*|proposal|untitled)$/i.test(rawTitle);
+  const firstDescLine = (body ?? '')
+    .replace(/^[#\s>*_-]+/gm, '')
+    .split(/\r?\n/)
+    .map((l) => l.trim())
+    .find((l) => l.length >= 8 && l.length <= 200);
+  return (
+    isStubTitle ? (firstDescLine ?? `${daoName} proposal #${fallbackId}`) : rawTitle
+  ).slice(0, 500);
+}
+
 /** Tally returns unix-seconds-as-string timestamps; convert defensively. */
 export function tallyTsToDate(ts?: string | null): Date | null {
   if (!ts) return null;

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { mapTallyState, tallyTsToDate } from '@/lib/tally-client';
+import { mapTallyState, tallyTsToDate, deriveTallyTitle } from '@/lib/tally-client';
 
 describe('mapTallyState', () => {
   it('maps ACTIVE → active and PENDING → pending', () => {
@@ -42,5 +42,37 @@ describe('tallyTsToDate', () => {
   it('treats a millisecond timestamp (>= 1e12) as already-ms', () => {
     const ms = 1_700_000_000_000;
     expect(tallyTsToDate(String(ms))?.getTime()).toBe(ms);
+  });
+});
+
+describe('deriveTallyTitle', () => {
+  it('keeps a real title as-is', () => {
+    expect(deriveTallyTitle('Adopt the SEAL Safe Harbor', 'body', 'Compound', '1')).toBe(
+      'Adopt the SEAL Safe Harbor',
+    );
+  });
+
+  it('replaces stub titles (0x0 / "Proposal" / untitled / too short / empty)', () => {
+    const desc = 'Increase the supply cap for rsETH on Mainnet';
+    for (const stub of ['0x0', '0xdeadbeef', 'Proposal', 'untitled', 'abc', '', '   ']) {
+      expect(deriveTallyTitle(stub, desc, 'Compound', '42'), stub).toBe(desc);
+    }
+  });
+
+  it('strips markdown/leading noise and picks the first meaningful description line', () => {
+    const body = '#  \n> \nSupply cap recommendations for rsETH on USDC comets';
+    expect(deriveTallyTitle('0x0', body, 'Compound', '42')).toBe(
+      'Supply cap recommendations for rsETH on USDC comets',
+    );
+  });
+
+  it('falls back to "{DAO} proposal #{id}" when stub title has no usable description', () => {
+    expect(deriveTallyTitle('0x0', null, 'Compound', '99')).toBe('Compound proposal #99');
+    expect(deriveTallyTitle('0x0', 'short', 'Uniswap', '7')).toBe('Uniswap proposal #7');
+  });
+
+  it('truncates to 500 chars', () => {
+    const long = 'Real Title ' + 'x'.repeat(600);
+    expect(deriveTallyTitle(long, null, 'Aave', '1').length).toBe(500);
   });
 });
