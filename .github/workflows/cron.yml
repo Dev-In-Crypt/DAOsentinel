@@ -2,8 +2,11 @@ name: Cron
 
 on:
   schedule:
-    # Snapshot syncs (proposals + votes + whale detection) — every 5 min
-    - cron: '*/5 * * * *'
+    # Snapshot + Tally syncs (proposals + votes + whale detection) — every 20 min.
+    # These paginated walkers routinely run 10-16 min; at */5 consecutive ticks
+    # overlapped and GitHub cancelled the queued ones (red "failure" + email).
+    # A 20-min interval clears the typical run time so ticks no longer pile up.
+    - cron: '*/20 * * * *'
     # AI summaries — every 15 min (Gemini is fast but we batch to save tokens)
     - cron: '*/15 * * * *'
     # Democracy Score recompute — daily at 02:00 UTC
@@ -53,7 +56,7 @@ jobs:
           MANUAL="${{ github.event.inputs.job }}"
 
           case "$SCHED" in
-            "*/5 * * * *")
+            "*/20 * * * *")
               echo "endpoints=sync-proposals,__votes_pages__,__tally_pages__" >> $GITHUB_OUTPUT
               ;;
             "*/15 * * * *")
