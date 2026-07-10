@@ -163,7 +163,9 @@ Upcoming: ${JSON.stringify(data.upcoming, null, 2)}`,
   return row ? { id: row.id, title, body } : null;
 }
 
-function formatFallback(title: string, d: DigestPayload): string {
+// Exported for unit testing. Deterministic markdown used when the AI call
+// fails or returns nothing — must stay a pure function of the payload.
+export function formatFallback(title: string, d: DigestPayload): string {
   const top = d.topProposals
     .slice(0, 5)
     .map((p) => `- **${p.title}** (${p.dao}) — ${p.votes} votes, ${p.state}`)
