@@ -144,7 +144,9 @@ async function checkSwing(proposalId: string) {
   }
 }
 
-function computeLeadingChoice(voteRows: { choice: number; votingPower: string }[], choicesLen: number): number {
+// Exported for unit testing. Pure: sums voting power per (1-indexed) choice
+// and returns the 0-indexed leading choice. Used to detect last-minute swings.
+export function computeLeadingChoice(voteRows: { choice: number; votingPower: string }[], choicesLen: number): number {
   const totals = new Array(Math.max(choicesLen, 1)).fill(0) as number[];
   for (const v of voteRows) {
     const idx = v.choice - 1;
