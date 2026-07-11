@@ -15,7 +15,19 @@ jobs:
           node-version: '20'
           cache: 'npm'
       - run: npm ci --legacy-peer-deps
-      - name: Type check + build
+      # Type check + build, run against a DELIBERATELY UNREACHABLE database.
+      #
+      # DO NOT add a postgres service container to make this DB reachable.
+      # No-param pages that forget `export const dynamic = 'force-dynamic'`
+      # get prerendered (SSG) at build time and hit the database — this step
+      # is the only thing that catches that class of bug before it ships.
+      # It's exactly what caught the /delegates + /digest ISR regression
+      # (broke CI on commit 0f337f4, fixed in 637ac1e). If this step ever
+      # starts passing because a real DB became reachable, the guard is gone
+      # and that regression class ships silently again.
+      #
+      # Local repro: DATABASE_URL=postgresql://x@127.0.0.1:59999/dead npx next build
+      - name: Type check + build (dead-DB prerender guard)
         run: npm run build
         env:
           DATABASE_URL: postgresql://postgres:postgres@localhost:5432/govwatch
