@@ -14,3 +14,14 @@ coverage/
 playwright-report/
 test-results/
 drizzle/meta/
+
+# Internal agent workflow docs — local only, never pushed to the public repo.
+/AGENTS.md
+/ROADMAP.md
+/TODO.md
+/STATE.md
+/VERIFY.md
+/ARCHITECTURE.md
+/SECURITY_NOTES.md
+/DECISIONS.md
+/RUNS/
