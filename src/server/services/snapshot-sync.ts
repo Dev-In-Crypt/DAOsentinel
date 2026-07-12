@@ -238,7 +238,11 @@ export async function syncRecentlyClosedVotes(): Promise<{ proposals: number; vo
   return { proposals: closed.length, votes: totalVotes };
 }
 
-function normaliseChoice(choice: SnapshotVote['choice']): number {
+// Exported for unit testing. Pure: Snapshot votes encode `choice` differently
+// per voting type (single-choice number, ranked-choice array, weighted/
+// approval object) — this collapses all three down to one representative
+// choice index for our single-column storage.
+export function normaliseChoice(choice: SnapshotVote['choice']): number {
   if (typeof choice === 'number') return choice;
   if (Array.isArray(choice)) return choice[0] ?? 0;
   if (choice && typeof choice === 'object') {
