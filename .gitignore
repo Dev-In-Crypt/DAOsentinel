@@ -14,6 +14,7 @@ coverage/
 playwright-report/
 test-results/
 drizzle/meta/
+*.tsbuildinfo
 
 # Internal agent workflow docs — local only, never pushed to the public repo.
 /AGENTS.md
