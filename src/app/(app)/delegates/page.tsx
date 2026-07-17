@@ -53,6 +53,28 @@ export default async function DelegatesPage() {
         </Link>
       </div>
 
+      <div
+        className="flex flex-wrap items-center justify-between gap-3 rounded-xl px-5 py-4"
+        style={{
+          background: 'hsl(var(--mint) / 0.10)',
+          boxShadow: 'inset 0 0 0 1px hsl(var(--mint) / 0.28)',
+        }}
+      >
+        <div className="text-sm">
+          <span className="mono uppercase tracking-wider text-[hsl(var(--mint))]">
+            New
+          </span>{' '}
+          · Not sure who to delegate to? See a transparent, ranked list.
+        </div>
+        <Link
+          href="/delegates/recommended"
+          className="text-sm hover:underline mono"
+          style={{ color: 'hsl(var(--mint))' }}
+        >
+          View recommended delegates →
+        </Link>
+      </div>
+
       <div className="glass-card divide-y divide-[hsl(var(--line))] p-0">
         {rows.length === 0 && (
           <div className="p-12 text-center text-sm text-[hsl(var(--text-dim))]">

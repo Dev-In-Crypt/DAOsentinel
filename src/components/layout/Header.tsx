@@ -119,6 +119,9 @@ export function Header() {
           <Link href="/delegates/blocs" onClick={() => setMenuOpen(false)}>
             Voting blocs
           </Link>
+          <Link href="/delegates/recommended" onClick={() => setMenuOpen(false)}>
+            Recommended delegates
+          </Link>
         </div>
         <div className="mc-nav-mobile-cta">
           {isAuthed ? (

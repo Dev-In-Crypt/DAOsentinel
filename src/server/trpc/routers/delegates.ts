@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { desc, eq, sql } from 'drizzle-orm';
 import { router, publicProcedure } from '../trpc';
 import { delegates, delegateDaoActivity, daos } from '../../db/schema';
+import { scoreDelegate } from '../../services/delegate-recommendations';
 
 export const delegatesRouter = router({
   list: publicProcedure
@@ -156,5 +157,52 @@ export const delegatesRouter = router({
         ens_name: string | null;
         karma_score: string | null;
       }>;
+    }),
+
+  /**
+   * Ranked list of delegates by scoreDelegate() — a transparent weighted
+   * formula over signals we already collect (participation, Karma
+   * reputation, cross-DAO activity, response time). See
+   * docs/specs/delegate-recommendation-engine.md. Global list for now;
+   * per-DAO scoping can be added later if there's demand.
+   */
+  recommended: publicProcedure
+    .input(
+      z
+        .object({ limit: z.number().min(1).max(100).default(20) })
+        .optional()
+        .default({}),
+    )
+    .query(async ({ ctx, input }) => {
+      // Scoring happens in JS, not SQL — bound the candidate set rather
+      // than loading every delegate row.
+      const rows = await ctx.db.select().from(delegates).limit(500);
+
+      const scored = rows
+        .map((d) => {
+          const participationRate = d.participationRate != null ? Number(d.participationRate) : null;
+          const karmaScore = d.karmaScore != null ? Number(d.karmaScore) : null;
+          const avgResponseTimeHours =
+            d.avgResponseTimeHours != null ? Number(d.avgResponseTimeHours) : null;
+          const score = scoreDelegate({
+            participationRate,
+            karmaScore,
+            totalDaosActive: d.totalDaosActive,
+            avgResponseTimeHours,
+          });
+          return { delegate: d, score, participationRate, karmaScore, avgResponseTimeHours };
+        })
+        // Exclude delegates with no usable signal at all — a 0 score from
+        // missing data is not the same as a 0 score from poor performance.
+        .filter(
+          ({ delegate: d, participationRate, karmaScore, avgResponseTimeHours }) =>
+            participationRate != null ||
+            karmaScore != null ||
+            d.totalDaosActive != null ||
+            avgResponseTimeHours != null,
+        );
+
+      scored.sort((a, b) => b.score - a.score);
+      return scored.slice(0, input.limit);
     }),
 });
