@@ -7,6 +7,7 @@ import { alertsRouter } from './routers/alerts';
 import { scoresRouter } from './routers/scores';
 import { newsletterRouter } from './routers/newsletter';
 import { userRouter } from './routers/user';
+import { simulatorRouter } from './routers/simulator';
 
 export const appRouter = router({
   daos: daosRouter,
@@ -17,6 +18,7 @@ export const appRouter = router({
   scores: scoresRouter,
   newsletter: newsletterRouter,
   user: userRouter,
+  simulator: simulatorRouter,
 });
 
 export type AppRouter = typeof appRouter;

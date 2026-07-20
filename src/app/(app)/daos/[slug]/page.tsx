@@ -123,8 +123,14 @@ export default async function DaoProfilePage({ params }: { params: Promise<{ slu
               {dao.website} ↗
             </a>
           )}
-          <div className="mt-4">
+          <div className="mt-4 flex flex-wrap items-center gap-3">
             <CompareWithPicker currentSlug={dao.slug} options={allDaos} />
+            <Link
+              href={`/daos/${dao.slug}/simulator`}
+              className="text-sm text-[hsl(var(--indigo-bright))] hover:underline mono"
+            >
+              Voting-power simulator →
+            </Link>
           </div>
         </div>
       </div>
