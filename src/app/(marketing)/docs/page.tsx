@@ -168,6 +168,23 @@ export default function DocsPage() {
               </p>
             </a>
           </div>
+          <p className="mt-4 text-sm text-[hsl(var(--text-dim))]">
+            Prefer a feed reader?{' '}
+            <a
+              href="/api/feed/alerts.xml"
+              className="text-[hsl(var(--indigo-bright))] hover:underline"
+            >
+              Subscribe to the Atom feed
+            </a>{' '}
+            for governance alerts across all DAOs, or swap{' '}
+            <code className="mono">alerts.xml</code> for{' '}
+            <code className="mono">/api/feed/dao/[slug]</code> to follow a single DAO. No auth
+            required — same data as the{' '}
+            <Link href="/api-docs" className="text-[hsl(var(--indigo-bright))] hover:underline">
+              Open API
+            </Link>
+            .
+          </p>
         </section>
       </main>
       <Footer />

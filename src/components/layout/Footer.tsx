@@ -4,7 +4,7 @@ import { BrandMark } from './BrandMark';
 const COLS = [
   { h: 'Platform', links: [['Whale detection', '/alerts'], ['Turnout analytics', '/daos'], ['Delegate maps', '/delegates'], ['Weekly digest', '/digest']] },
   { h: 'Analytics', links: [['Compare DAOs', '/compare'], ['Voting blocs', '/delegates/blocs'], ['Democracy Score', '/daos'], ['Roadmap', '/roadmap']] },
-  { h: 'Resources', links: [['Docs', '/docs'], ['API reference', '/api-docs'], ['Source code', 'https://github.com/Dev-In-Crypt/DAOsentinel']] },
+  { h: 'Resources', links: [['Docs', '/docs'], ['API reference', '/api-docs'], ['RSS feed', '/api/feed/alerts.xml'], ['Source code', 'https://github.com/Dev-In-Crypt/DAOsentinel']] },
 ] as const;
 
 export function Footer() {
