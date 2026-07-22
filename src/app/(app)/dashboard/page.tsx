@@ -1,12 +1,14 @@
 import Link from 'next/link';
+import { auth } from '@/server/auth';
 import { db } from '@/server/db';
-import { daos, proposals, alerts } from '@/server/db/schema';
+import { daos, proposals, alerts, users } from '@/server/db/schema';
 import { asc, desc, and, eq, gt, sql } from 'drizzle-orm';
 import { Badge } from '@/components/ui/badge';
 import { ScoreGauge } from '@/components/charts/ScoreGauge';
 import { RiskBadge } from '@/components/proposals/RiskBadge';
 import { PageHeader } from '@/components/layout/PageHeader';
 import { timeAgo, timeRemaining, formatNumber } from '@/lib/utils';
+import { makeLinkToken } from '@/lib/telegram';
 
 export const dynamic = 'force-dynamic';
 
@@ -16,6 +18,14 @@ export const metadata = {
 
 export default async function DashboardHome() {
   const now = new Date();
+
+  const session = await auth();
+  let icsToken: string | null = null;
+  if (session?.user?.email) {
+    const [me] = await db.select({ id: users.id }).from(users).where(eq(users.email, session.user.email)).limit(1);
+    if (me) icsToken = makeLinkToken(me.id);
+  }
+
   const [trending, recentAlerts, topDaos, counts, upcoming] = await Promise.all([
     db
       .select({ proposal: proposals, dao: daos })
@@ -150,7 +160,17 @@ export default async function DashboardHome() {
       {/* Upcoming deadlines */}
       {hasAnyDeadline && (
         <section>
-          <h2 className="app-sec-title">Upcoming deadlines</h2>
+          <div className="mb-4 flex items-baseline justify-between">
+            <h2 className="app-sec-title" style={{ marginBottom: 0 }}>Upcoming deadlines</h2>
+            {icsToken && (
+              <a
+                href={`/api/ics/watchlist/${icsToken}`}
+                className="text-xs mono text-[hsl(var(--indigo-bright))] hover:underline"
+              >
+                Add to calendar →
+              </a>
+            )}
+          </div>
           <div className="grid gap-4 md:grid-cols-3">
             {(
               [

@@ -9,7 +9,10 @@ import { WatchlistEditor } from './WatchlistEditor';
 import { ApiKeyManager } from './ApiKeyManager';
 import { TelegramConnect } from './TelegramConnect';
 import { DiscordConnect } from './DiscordConnect';
-import { connectLink } from '@/lib/telegram';
+import { CalendarFeedLink } from './CalendarFeedLink';
+import { connectLink, makeLinkToken } from '@/lib/telegram';
+
+const APP_BASE = process.env.NEXTAUTH_URL || 'https://www.daosentinel.xyz';
 
 export const dynamic = 'force-dynamic';
 
@@ -66,6 +69,18 @@ export default async function SettingsPage() {
             connected).
           </p>
           <WatchlistEditor initial={user.watchedDaos ?? []} />
+        </div>
+      </section>
+
+      <section>
+        <h2 className="app-sec-title">Calendar feed</h2>
+        <div className="glass-card">
+          <p className="mb-4 text-sm text-[hsl(var(--text-dim))]">
+            Subscribe in Google Calendar, Apple Calendar, or Outlook to see your watched DAOs&apos;
+            voting deadlines alongside your other events. Calendar apps poll this URL on their own
+            schedule (typically hourly) — no login required to view it.
+          </p>
+          <CalendarFeedLink url={`${APP_BASE}/api/ics/watchlist/${makeLinkToken(user.id)}`} />
         </div>
       </section>
 
