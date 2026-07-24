@@ -122,6 +122,9 @@ export function Header() {
           <Link href="/delegates/recommended" onClick={() => setMenuOpen(false)}>
             Recommended delegates
           </Link>
+          <Link href="/delegates/silent-power" onClick={() => setMenuOpen(false)}>
+            Silent power
+          </Link>
         </div>
         <div className="mc-nav-mobile-cta">
           {isAuthed ? (

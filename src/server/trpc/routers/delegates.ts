@@ -3,6 +3,7 @@ import { desc, eq, sql } from 'drizzle-orm';
 import { router, publicProcedure } from '../trpc';
 import { delegates, delegateDaoActivity, daos } from '../../db/schema';
 import { scoreDelegate } from '../../services/delegate-recommendations';
+import { scoreSilentPower } from '../../services/delegate-inactivity';
 
 export const delegatesRouter = router({
   list: publicProcedure
@@ -201,6 +202,71 @@ export const delegatesRouter = router({
             d.totalDaosActive != null ||
             avgResponseTimeHours != null,
         );
+
+      scored.sort((a, b) => b.score - a.score);
+      return scored.slice(0, input.limit);
+    }),
+
+  /**
+   * "Silent power" — delegates ranked by scoreSilentPower(): voting power
+   * they hold (their strongest DAO position) times how long since they last
+   * showed up to vote anywhere. A high-VP delegate gone quiet is a bigger
+   * governance risk than a whale who votes in the open — their power is
+   * real but unaccountable. Voting power is normalized relative to the max
+   * in this candidate set (raw VP units aren't comparable across DAOs).
+   */
+  silentPower: publicProcedure
+    .input(
+      z
+        .object({ limit: z.number().min(1).max(100).default(20) })
+        .optional()
+        .default({}),
+    )
+    .query(async ({ ctx, input }) => {
+      const rows = await ctx.db.execute(sql`
+        SELECT
+          d.id, d.address, d.ens_name, d.avatar_url,
+          max(da.voting_power::numeric) AS max_voting_power,
+          (SELECT max(v.created_at) FROM votes v WHERE v.voter_address = d.address) AS last_vote_at
+        FROM delegates d
+        JOIN delegate_dao_activity da ON da.delegate_id = d.id
+        GROUP BY d.id
+        HAVING max(da.voting_power::numeric) > 0
+        ORDER BY max(da.voting_power::numeric) DESC
+        LIMIT 500
+      `);
+      const candidates = rows as unknown as Array<{
+        id: string;
+        address: string;
+        ens_name: string | null;
+        avatar_url: string | null;
+        max_voting_power: string;
+        last_vote_at: string | null;
+      }>;
+      if (candidates.length === 0) return [];
+
+      const maxVp = Math.max(...candidates.map((c) => Number(c.max_voting_power)));
+      const now = Date.now();
+
+      const scored = candidates.map((c) => {
+        const votingPower = Number(c.max_voting_power);
+        const daysSinceLastVote = c.last_vote_at
+          ? (now - new Date(c.last_vote_at).getTime()) / (1000 * 60 * 60 * 24)
+          : null;
+        const score = scoreSilentPower({
+          votingPowerNorm: maxVp > 0 ? votingPower / maxVp : 0,
+          daysSinceLastVote,
+        });
+        return {
+          id: c.id,
+          address: c.address,
+          ensName: c.ens_name,
+          avatarUrl: c.avatar_url,
+          votingPower,
+          daysSinceLastVote,
+          score,
+        };
+      });
 
       scored.sort((a, b) => b.score - a.score);
       return scored.slice(0, input.limit);
