@@ -1,0 +1,27 @@
+{
+  "name": "dao-sentinel-sdk",
+  "version": "0.1.0",
+  "description": "Typed JS/TS client for the DAO Sentinel public governance API (https://daosentinel.xyz)",
+  "license": "MIT",
+  "author": "DAO Sentinel Labs",
+  "homepage": "https://github.com/Dev-In-Crypt/DAOsentinel/tree/main/packages/sdk-js",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Dev-In-Crypt/DAOsentinel.git",
+    "directory": "packages/sdk-js"
+  },
+  "keywords": ["dao", "governance", "snapshot", "web3", "api-client", "dao-sentinel"],
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "files": ["dist", "README.md", "LICENSE"],
+  "engines": { "node": ">=18" },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "test": "vitest run",
+    "prepublishOnly": "npm run build"
+  },
+  "devDependencies": {
+    "typescript": "^5.6.3",
+    "vitest": "^2.1.5"
+  }
+}

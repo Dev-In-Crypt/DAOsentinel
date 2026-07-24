@@ -208,6 +208,37 @@ export default function ApiDocsPage() {
           </div>
         </section>
 
+        {/* Official SDK */}
+        <section className="mb-12">
+          <h2 className="app-sec-title">JS/TS SDK</h2>
+          <div className="glass-card space-y-3">
+            <p className="text-sm text-[hsl(var(--text-dim))]">
+              A typed client for all 3 endpoints above, zero runtime dependencies. Same MIT
+              license as the rest of the project.
+            </p>
+            <Code>{`npm install dao-sentinel-sdk`}</Code>
+            <Code>{`import { DaoSentinelClient } from 'dao-sentinel-sdk';
+
+const client = new DaoSentinelClient({ apiKey: process.env.DAO_SENTINEL_API_KEY! });
+
+const daos = await client.listDaos({ limit: 10 });
+const { data: proposals } = await client.listProposals({ state: 'active', dao: 'uniswap' });
+const alerts = await client.listAlerts({ severity: 'critical' });`}</Code>
+            <p className="text-xs text-[hsl(var(--text-dim))]">
+              Source:{' '}
+              <a
+                href="https://github.com/Dev-In-Crypt/DAOsentinel/tree/main/packages/sdk-js"
+                target="_blank"
+                rel="noreferrer"
+                className="text-[hsl(var(--indigo-bright))] hover:underline"
+              >
+                packages/sdk-js
+              </a>
+              .
+            </p>
+          </div>
+        </section>
+
         {/* Public endpoints */}
         <section className="mb-12">
           <h2 className="app-sec-title">Public endpoints (no auth)</h2>
