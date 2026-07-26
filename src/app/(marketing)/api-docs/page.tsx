@@ -239,6 +239,47 @@ const alerts = await client.listAlerts({ severity: 'critical' });`}</Code>
           </div>
         </section>
 
+        {/* MCP server */}
+        <section className="mb-12">
+          <h2 className="app-sec-title">MCP server</h2>
+          <div className="glass-card space-y-3">
+            <p className="text-sm text-[hsl(var(--text-dim))]">
+              Query DAO Sentinel directly from Claude Desktop, Claude Code, or any{' '}
+              <a
+                href="https://modelcontextprotocol.io"
+                target="_blank"
+                rel="noreferrer"
+                className="text-[hsl(var(--indigo-bright))] hover:underline"
+              >
+                MCP
+              </a>
+              -compatible agent — 5 read-only tools covering DAOs, proposals, alerts, the Atom
+              feed, and ICS calendars.
+            </p>
+            <Code>{`npm install -g dao-sentinel-mcp`}</Code>
+            <Code>{`{
+  "mcpServers": {
+    "dao-sentinel": {
+      "command": "dao-sentinel-mcp",
+      "env": { "DAO_SENTINEL_API_KEY": "gw_..." }
+    }
+  }
+}`}</Code>
+            <p className="text-xs text-[hsl(var(--text-dim))]">
+              Source:{' '}
+              <a
+                href="https://github.com/Dev-In-Crypt/DAOsentinel/tree/main/packages/mcp-server"
+                target="_blank"
+                rel="noreferrer"
+                className="text-[hsl(var(--indigo-bright))] hover:underline"
+              >
+                packages/mcp-server
+              </a>
+              .
+            </p>
+          </div>
+        </section>
+
         {/* Public endpoints */}
         <section className="mb-12">
           <h2 className="app-sec-title">Public endpoints (no auth)</h2>
