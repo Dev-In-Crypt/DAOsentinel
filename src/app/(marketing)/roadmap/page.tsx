@@ -120,7 +120,7 @@ const PHASES: Phase[] = [
       {
         status: 'next',
         title: 'Public-goods grant funding',
-        body: 'Funded by the ecosystem, free for the ecosystem: Arbitrum LTIPP, Optimism RetroPGF, ENS Public Goods, Gitcoin. No subscriptions, no paywalls — ever.',
+        body: 'Funded by the ecosystem, free for the ecosystem: Arbitrum LTIPP, Optimism RetroPGF, ENS Public Goods, Gitcoin. The core watchdog stays free forever — no paywalls on public data, ever. We may offer optional paid services for teams that want dedicated support.',
       },
       {
         status: 'next',

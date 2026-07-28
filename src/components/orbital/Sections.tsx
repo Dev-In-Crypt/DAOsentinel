@@ -259,8 +259,10 @@ export function PublicGoodSection() {
         <h2>Free for everyone. Forever.</h2>
         <p>
           DAO Sentinel is built as public-goods infrastructure for the governance commons. Every
-          feature is free, with no paywalls, no &ldquo;pro&rdquo; tier, and no data resale — funded
-          by ecosystem grants, not subscriptions.
+          dashboard, alert, and API feature you see here is free, with no paywalls, no
+          &ldquo;pro&rdquo; tier, and no data resale — funded by ecosystem grants, not
+          subscriptions. We may offer optional paid services for teams that want dedicated
+          support.
         </p>
       </div>
       <div
