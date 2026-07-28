@@ -85,16 +85,21 @@ export default async function SettingsPage() {
       {orgDashboardLinks.length > 0 && (
         <section>
           <h2 className="app-sec-title">Your organizations</h2>
-          <div className="glass-card space-y-2">
-            {orgDashboardLinks.map((l) => (
-              <Link
-                key={`${l.orgId}-${l.daoSlug}`}
-                href={`/org/${l.orgId}/${l.daoSlug}`}
-                className="block text-sm text-[hsl(var(--indigo-bright))] hover:underline"
-              >
-                {l.label} →
-              </Link>
-            ))}
+          <div className="glass-card">
+            <p className="mb-4 text-sm text-[hsl(var(--text-dim))]">
+              Private dashboards for the organizations you&apos;re a member of.
+            </p>
+            <div className="space-y-2">
+              {orgDashboardLinks.map((l) => (
+                <Link
+                  key={`${l.orgId}-${l.daoSlug}`}
+                  href={`/org/${l.orgId}/${l.daoSlug}`}
+                  className="block text-sm text-[hsl(var(--indigo-bright))] hover:underline"
+                >
+                  {l.label} →
+                </Link>
+              ))}
+            </div>
           </div>
         </section>
       )}
