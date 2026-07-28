@@ -64,18 +64,27 @@ function extractSubdomain(hostname: string): string | null {
 }
 
 export async function middleware(request: NextRequest) {
+  // Strip any client-supplied value for this header up front, on every path.
+  // It's only ever meant to be set below, from the trusted DB-backed lookup
+  // — without this, a caller could spoof branding on their own request on
+  // any fail-open path (harmless — self-request-scoped, no cross-user or
+  // cached effect — but there's no reason to let untrusted input reach the
+  // header at all when stripping it costs nothing).
+  const cleanHeaders = new Headers(request.headers);
+  cleanHeaders.delete(ORG_BRANDING_HEADER);
+
   const hostHeader = request.headers.get('host') ?? '';
   const hostname = hostHeader.split(':')[0].toLowerCase();
 
   if (isMainAppHost(hostname)) {
-    return NextResponse.next();
+    return NextResponse.next({ request: { headers: cleanHeaders } });
   }
 
   const subdomain = extractSubdomain(hostname);
   if (!subdomain) {
     // Unrecognized host shape (bare IP, an unmapped custom domain, etc.) —
     // fail open and just show the normal public site.
-    return NextResponse.next();
+    return NextResponse.next({ request: { headers: cleanHeaders } });
   }
 
   try {
@@ -86,17 +95,16 @@ export async function middleware(request: NextRequest) {
     if (!res.ok) {
       // No active org for this subdomain (404), or the lookup route errored
       // — fail open rather than break the request.
-      return NextResponse.next();
+      return NextResponse.next({ request: { headers: cleanHeaders } });
     }
 
     const org = await res.json();
-    const requestHeaders = new Headers(request.headers);
-    requestHeaders.set(ORG_BRANDING_HEADER, JSON.stringify(org));
+    cleanHeaders.set(ORG_BRANDING_HEADER, JSON.stringify(org));
 
-    return NextResponse.next({ request: { headers: requestHeaders } });
+    return NextResponse.next({ request: { headers: cleanHeaders } });
   } catch {
     // Network/DB hiccup on the lookup — fail open.
-    return NextResponse.next();
+    return NextResponse.next({ request: { headers: cleanHeaders } });
   }
 }
 
