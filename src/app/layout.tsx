@@ -1,10 +1,14 @@
 import type { Metadata } from 'next';
+import { headers } from 'next/headers';
 import { Space_Grotesk, Manrope, JetBrains_Mono } from 'next/font/google';
 import { Analytics } from '@vercel/analytics/react';
 import { SpeedInsights } from '@vercel/speed-insights/next';
 import './globals.css';
 import './orbital.css';
 import { Providers } from './providers';
+import { OrgBrandingProvider } from '@/components/layout/OrgBrandingProvider';
+import { ORG_BRANDING_HEADER, parseOrgBranding } from '@/lib/org-branding';
+import { brandColorToCssVars } from '@/lib/color';
 
 const spaceGrotesk = Space_Grotesk({
   subsets: ['latin'],
@@ -32,7 +36,15 @@ export const metadata: Metadata = {
   metadataBase: new URL(process.env.NEXTAUTH_URL || 'http://localhost:3000'),
 };
 
-export default function RootLayout({ children }: { children: React.ReactNode }) {
+export default async function RootLayout({ children }: { children: React.ReactNode }) {
+  // Set by src/middleware.ts when the request's Host header matched an
+  // active org's white-label subdomain (TODO-058). `null` in the default
+  // (no-org) case — everything below is a no-op then, so the default render
+  // is unchanged from before this feature existed.
+  const headerList = await headers();
+  const branding = parseOrgBranding(headerList.get(ORG_BRANDING_HEADER));
+  const cssVars = branding ? brandColorToCssVars(branding.brandingPrimaryColor) : null;
+
   return (
     <html
       lang="en"
@@ -44,13 +56,27 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             __html: `try{if(!window.matchMedia||!window.matchMedia('(prefers-reduced-motion: reduce)').matches){document.documentElement.classList.add('anim-ready');}}catch(e){}`,
           }}
         />
+        {cssVars && (
+          <style
+            // Retheme the orbital indigo/primary tokens to the org's brand
+            // color for this white-label subdomain only — see
+            // src/lib/color.ts. Absent entirely when there's no org match.
+            dangerouslySetInnerHTML={{
+              __html: `:root{${Object.entries(cssVars)
+                .map(([k, v]) => `${k}:${v};`)
+                .join('')}}`,
+            }}
+          />
+        )}
       </head>
       <body className="min-h-screen text-foreground antialiased">
         <div className="bg-atmosphere" />
         <div className="bg-grid" />
         <div className="bg-noise" />
         <div className="shell">
-          <Providers>{children}</Providers>
+          <OrgBrandingProvider branding={branding}>
+            <Providers>{children}</Providers>
+          </OrgBrandingProvider>
         </div>
         <Analytics />
         <SpeedInsights />

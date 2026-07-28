@@ -1,12 +1,14 @@
 import Link from 'next/link';
+import { headers } from 'next/headers';
 import { db } from '@/server/db';
 import { daos } from '@/server/db/schema';
-import { desc, asc, ilike, sql } from 'drizzle-orm';
+import { desc, asc, ilike, sql, and, inArray } from 'drizzle-orm';
 import { Badge } from '@/components/ui/badge';
 import { ScoreGauge } from '@/components/charts/ScoreGauge';
 import { Input } from '@/components/ui/input';
 import { PageHeader } from '@/components/layout/PageHeader';
 import { formatNumber, formatUSD } from '@/lib/utils';
+import { ORG_BRANDING_HEADER, parseOrgBranding } from '@/lib/org-branding';
 
 export const dynamic = 'force-dynamic';
 
@@ -43,7 +45,21 @@ export default async function DaosPage({
         ? desc(daos.totalProposals)
         : desc(daos.democracyScore);
 
-  const whereExpr = search ? ilike(daos.name, `%${search}%`) : undefined;
+  // White-label subdomain DAO scoping (TODO-058): when the request is under
+  // an org's branded subdomain (see src/middleware.ts) and that org has a
+  // non-empty daoSlugs allowlist, restrict the listing to just those DAOs.
+  // `branding` is null on the default/no-org site, so this is a pure no-op
+  // there — behavior is unchanged from before this feature existed.
+  const headerList = await headers();
+  const branding = parseOrgBranding(headerList.get(ORG_BRANDING_HEADER));
+  const scopedSlugs = branding && branding.daoSlugs.length > 0 ? branding.daoSlugs : null;
+
+  const filters = [
+    search ? ilike(daos.name, `%${search}%`) : undefined,
+    scopedSlugs ? inArray(daos.slug, scopedSlugs) : undefined,
+  ].filter((f): f is NonNullable<typeof f> => f !== undefined);
+
+  const whereExpr = filters.length > 0 ? and(...filters) : undefined;
 
   const [[{ total }], rows] = await Promise.all([
     db.select({ total: sql<number>`count(*)::int` }).from(daos).where(whereExpr),

@@ -4,6 +4,7 @@ import { usePathname } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import { useSession, signOut } from 'next-auth/react';
 import { BrandMark } from './BrandMark';
+import { useOrgBranding } from './OrgBrandingProvider';
 
 const NAV_LINKS = [
   ['/dashboard', 'Dashboard'],
@@ -19,6 +20,7 @@ export function Header() {
   const [menuOpen, setMenuOpen] = useState(false);
   const { data: session, status } = useSession();
   const pathname = usePathname();
+  const orgBranding = useOrgBranding();
 
   useEffect(() => {
     const on = () => setScrolled(window.scrollY > 24);
@@ -46,8 +48,19 @@ export function Header() {
     <nav className={'mc-nav' + (scrolled ? ' scrolled' : '') + (menuOpen ? ' menu-open' : '')}>
       <div className="mc-nav-inner">
         <Link href="/" className="mc-brand">
-          <BrandMark />
-          DAO Sentinel
+          {orgBranding?.brandingLogoUrl ? (
+            // eslint-disable-next-line @next/next/no-img-element -- org logos are
+            // arbitrary client-hosted URLs, not worth routing through next/image config
+            <img
+              src={orgBranding.brandingLogoUrl}
+              alt={orgBranding.brandingDisplayName ?? orgBranding.name}
+              className="mc-brand-mark"
+              style={{ objectFit: 'contain' }}
+            />
+          ) : (
+            <BrandMark />
+          )}
+          {orgBranding?.brandingDisplayName ?? orgBranding?.name ?? 'DAO Sentinel'}
         </Link>
 
         <div className="mc-nav-links">
