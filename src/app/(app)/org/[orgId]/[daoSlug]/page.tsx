@@ -155,9 +155,20 @@ export default async function OrgDaoDashboardPage({
         highlight="dashboard"
         description={`Private view for ${dao.name} — visible only to members of ${organization.name}.`}
         right={
-          showPrioritySyncBadge ? (
-            <Badge variant="default">{formatPrioritySyncBadgeLabel(dao.updatedAt)}</Badge>
-          ) : undefined
+          <div className="flex items-center gap-3">
+            {showPrioritySyncBadge && (
+              <Badge variant="default">{formatPrioritySyncBadgeLabel(dao.updatedAt)}</Badge>
+            )}
+            {/* TODO-060: CSV export of this dashboard's report data. Same
+                requireOrgAccess + orgId cross-check gate as this page itself
+                — see src/app/api/org/[orgId]/[daoSlug]/export.csv/route.ts. */}
+            <a
+              href={`/api/org/${organization.id}/${dao.slug}/export.csv`}
+              className="text-sm mono text-[hsl(var(--indigo-bright))] hover:underline"
+            >
+              Export CSV ↓
+            </a>
+          </div>
         }
       />
 
