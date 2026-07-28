@@ -379,6 +379,32 @@ export const organizationMembers = pgTable(
 );
 
 // =============================================
+// ORG NOTES (curated concierge annotations — paid services layer)
+// =============================================
+// Free-form notes an org's concierge team attaches to a specific alert or
+// proposal, shown in the org's private dashboard. No UI to create these yet
+// (added via direct DB access by the concierge team) — see TODO-054.
+export const orgNotes = pgTable(
+  'org_notes',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    organizationId: uuid('organization_id')
+      .notNull()
+      .references(() => organizations.id, { onDelete: 'cascade' }),
+    subjectType: text('subject_type').notNull(), // 'alert' | 'proposal'
+    subjectId: text('subject_id').notNull(),
+    note: text('note').notNull(),
+    authorUserId: uuid('author_user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  },
+  (t) => ({
+    orgIdx: index('idx_org_notes_org').on(t.organizationId, t.createdAt),
+  }),
+);
+
+// =============================================
 // RELATIONS
 // =============================================
 export const daosRelations = relations(daos, ({ many }) => ({
@@ -426,6 +452,14 @@ export const organizationMembersRelations = relations(organizationMembers, ({ on
   user: one(users, { fields: [organizationMembers.userId], references: [users.id] }),
 }));
 
+export const orgNotesRelations = relations(orgNotes, ({ one }) => ({
+  organization: one(organizations, {
+    fields: [orgNotes.organizationId],
+    references: [organizations.id],
+  }),
+  author: one(users, { fields: [orgNotes.authorUserId], references: [users.id] }),
+}));
+
 // Digests (weekly newsletter archive)
 export const digests = pgTable('digests', {
   id: uuid('id').primaryKey().defaultRandom(),
@@ -452,3 +486,5 @@ export type User = typeof users.$inferSelect;
 export type Organization = typeof organizations.$inferSelect;
 export type NewOrganization = typeof organizations.$inferInsert;
 export type OrganizationMember = typeof organizationMembers.$inferSelect;
+export type OrgNote = typeof orgNotes.$inferSelect;
+export type NewOrgNote = typeof orgNotes.$inferInsert;
