@@ -13,6 +13,7 @@ import { ProgressBar } from '@/components/ui/progress';
 import { PageHeader } from '@/components/layout/PageHeader';
 import { formatNumber, formatPct, formatUSD, timeAgo, timeRemaining } from '@/lib/utils';
 import { METRIC_HINT } from '@/lib/constants';
+import { shouldShowPrioritySyncBadge, formatPrioritySyncBadgeLabel } from '@/lib/priority-sync-badge';
 
 // Session-gated + org-scoped: must never be statically prerendered (it hits
 // the DB with the caller's identity). Mirrors settings/page.tsx.
@@ -68,6 +69,15 @@ export default async function OrgDaoDashboardPage({
 
   const [dao] = await db.select().from(daos).where(eq(daos.slug, daoSlug)).limit(1);
   if (!dao) notFound();
+
+  // TODO-057: "Priority sync" proof-of-value badge — only shown to org
+  // members whose organization is an active priority-tier customer (the
+  // same set of orgs the priority-sync cron route in
+  // src/app/api/cron/sync-priority/route.ts scopes its faster sync cadence
+  // to). `dao.updatedAt` is used as the "last synced" timestamp: it's the
+  // field syncTreasuries/syncPrices actually write on every run (see
+  // src/lib/priority-sync-badge.ts for why `scoreUpdatedAt` is not used).
+  const showPrioritySyncBadge = shouldShowPrioritySyncBadge(organization);
 
   const [active, recent, recentAlerts, history, notes] = await Promise.all([
     db
@@ -144,6 +154,11 @@ export default async function OrgDaoDashboardPage({
         title="Concierge"
         highlight="dashboard"
         description={`Private view for ${dao.name} — visible only to members of ${organization.name}.`}
+        right={
+          showPrioritySyncBadge ? (
+            <Badge variant="default">{formatPrioritySyncBadgeLabel(dao.updatedAt)}</Badge>
+          ) : undefined
+        }
       />
 
       {/* Hero */}
