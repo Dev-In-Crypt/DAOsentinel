@@ -95,7 +95,7 @@ export async function gatherDigestData(weekOf = new Date()): Promise<DigestPaylo
     .select({ proposal: proposals, dao: daos })
     .from(proposals)
     .innerJoin(daos, eq(daos.id, proposals.daoId))
-    .where(eq(proposals.state, 'active'))
+    .where(and(eq(proposals.state, 'active'), gt(proposals.endTimestamp, weekOf)))
     .orderBy(proposals.endTimestamp)
     .limit(8);
 
