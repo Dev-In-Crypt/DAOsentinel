@@ -26,3 +26,8 @@ drizzle/meta/
 /SECURITY_NOTES.md
 /DECISIONS.md
 /RUNS/
+
+# Internal business/monetization planning — pricing, sales mechanics, and
+# positioning are not appropriate for a public MIT repo, unlike docs/specs/
+# (which covers open governance-monitoring features).
+/MONETIZATION.md
