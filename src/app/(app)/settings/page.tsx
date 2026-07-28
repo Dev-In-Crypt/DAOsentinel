@@ -1,7 +1,8 @@
+import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { auth } from '@/server/auth';
 import { db } from '@/server/db';
-import { users } from '@/server/db/schema';
+import { users, organizationMembers, organizations } from '@/server/db/schema';
 import { eq } from 'drizzle-orm';
 import { Badge } from '@/components/ui/badge';
 import { PageHeader } from '@/components/layout/PageHeader';
@@ -36,6 +37,26 @@ export default async function SettingsPage() {
   const telegramLink = connectLink(user.id);
   const showTelegram = Boolean(telegramLink) || Boolean(user.telegramChatId);
 
+  // Paid-services discoverability: only rendered for the ~0.1% of users who
+  // are actually members of an organization — no empty card for everyone
+  // else. Same join shape as requireOrgAccess (src/server/api/org-auth.ts).
+  const orgRows = await db
+    .select({ organization: organizations })
+    .from(organizationMembers)
+    .innerJoin(organizations, eq(organizations.id, organizationMembers.organizationId))
+    .where(eq(organizationMembers.userId, user.id));
+
+  // An "all DAOs" org (daoSlugs: []) has no single dashboard route to link
+  // to today (only /org/[orgId]/[daoSlug] exists) — same known gap as the
+  // onboarding email (src/server/services/org-onboarding.ts).
+  const orgDashboardLinks = orgRows.flatMap(({ organization: org }) =>
+    org.daoSlugs.map((daoSlug) => ({
+      orgId: org.id,
+      daoSlug,
+      label: `${org.brandingDisplayName ?? org.name} — ${daoSlug}`,
+    })),
+  );
+
   return (
     <div className="space-y-8">
       <PageHeader
@@ -60,6 +81,23 @@ export default async function SettingsPage() {
           </p>
         </div>
       </section>
+
+      {orgDashboardLinks.length > 0 && (
+        <section>
+          <h2 className="app-sec-title">Your organizations</h2>
+          <div className="glass-card space-y-2">
+            {orgDashboardLinks.map((l) => (
+              <Link
+                key={`${l.orgId}-${l.daoSlug}`}
+                href={`/org/${l.orgId}/${l.daoSlug}`}
+                className="block text-sm text-[hsl(var(--indigo-bright))] hover:underline"
+              >
+                {l.label} →
+              </Link>
+            ))}
+          </div>
+        </section>
+      )}
 
       <section>
         <h2 className="app-sec-title">Watched DAOs</h2>
