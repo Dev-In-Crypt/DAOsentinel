@@ -333,6 +333,52 @@ export const newsletterSubscribers = pgTable('newsletter_subscribers', {
 });
 
 // =============================================
+// ORGANIZATIONS (paid services layer — see MONETIZATION.md, internal)
+// =============================================
+// A customer entity for the paid concierge/priority-sync/white-label
+// services. Deliberately separate from `users.plan`/`stripeCustomerId`/
+// `stripeSubscriptionId` above, which are individual-scoped and already
+// used for free-tier API rate-limit quotas — an organization is a team,
+// not a single account, and mixing the two concepts would risk breaking
+// the existing rate-limit code path.
+export const organizations = pgTable('organizations', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  name: text('name').notNull(),
+  daoSlugs: text('dao_slugs').array().notNull().default(sql`'{}'::text[]`),
+  tier: text('tier').notNull(), // 'concierge' | 'priority' | 'white_label' (an org can hold more than one — checked in app code, not a DB constraint)
+
+  billingContactEmail: text('billing_contact_email').notNull(),
+  stripeCustomerId: text('stripe_customer_id'),
+  stripeSubscriptionId: text('stripe_subscription_id'),
+
+  brandingLogoUrl: text('branding_logo_url'),
+  brandingPrimaryColor: text('branding_primary_color'),
+  brandingDisplayName: text('branding_display_name'),
+  subdomain: text('subdomain').unique(),
+
+  active: boolean('active').default(false),
+
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+});
+
+export const organizationMembers = pgTable(
+  'organization_members',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    organizationId: uuid('organization_id')
+      .notNull()
+      .references(() => organizations.id, { onDelete: 'cascade' }),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    role: text('role').notNull().default('member'), // 'owner' | 'member'
+  },
+  (t) => ({
+    orgUserIdx: uniqueIndex('idx_org_members_org_user').on(t.organizationId, t.userId),
+  }),
+);
+
+// =============================================
 // RELATIONS
 // =============================================
 export const daosRelations = relations(daos, ({ many }) => ({
@@ -368,6 +414,18 @@ export const alertsRelations = relations(alerts, ({ one }) => ({
   proposal: one(proposals, { fields: [alerts.proposalId], references: [proposals.id] }),
 }));
 
+export const organizationsRelations = relations(organizations, ({ many }) => ({
+  members: many(organizationMembers),
+}));
+
+export const organizationMembersRelations = relations(organizationMembers, ({ one }) => ({
+  organization: one(organizations, {
+    fields: [organizationMembers.organizationId],
+    references: [organizations.id],
+  }),
+  user: one(users, { fields: [organizationMembers.userId], references: [users.id] }),
+}));
+
 // Digests (weekly newsletter archive)
 export const digests = pgTable('digests', {
   id: uuid('id').primaryKey().defaultRandom(),
@@ -391,3 +449,6 @@ export type Delegate = typeof delegates.$inferSelect;
 export type Alert = typeof alerts.$inferSelect;
 export type NewAlert = typeof alerts.$inferInsert;
 export type User = typeof users.$inferSelect;
+export type Organization = typeof organizations.$inferSelect;
+export type NewOrganization = typeof organizations.$inferInsert;
+export type OrganizationMember = typeof organizationMembers.$inferSelect;
