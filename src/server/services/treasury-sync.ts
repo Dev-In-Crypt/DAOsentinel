@@ -1,6 +1,7 @@
-import { eq, sql } from 'drizzle-orm';
+import { eq, inArray, sql } from 'drizzle-orm';
 import { db } from '../db';
 import { daos } from '../db/schema';
+import { resolveSyncTargets } from './sync-targets';
 
 /**
  * Free, no-key DeFiLlama endpoints we can use:
@@ -97,12 +98,30 @@ async function fetchTreasury(llamaSlug: string): Promise<number | null> {
   }
 }
 
-export async function syncTreasuries(): Promise<{
+/**
+ * `daoIds` (TODO-056, priority sync path) is an OPTIONAL filter. When omitted
+ * (every existing caller today), behavior is byte-for-byte identical to
+ * before this parameter existed: the same unfiltered `db.select().from(daos)`
+ * query runs, with no `where` clause added. When provided:
+ *   - a non-empty array narrows the scan to just those DAO ids (via `inArray`).
+ *   - an explicit empty array is a no-op — it means "sync these zero DAOs,"
+ *     never "no filter," and returns immediately without touching the DB.
+ */
+export async function syncTreasuries(daoIds?: string[]): Promise<{
   scanned: number;
   updated: number;
   unmapped: number;
 }> {
-  const all = await db.select().from(daos);
+  // Explicit empty list = sync zero DAOs. Never fall through to "sync everything".
+  if (daoIds && daoIds.length === 0) {
+    return { scanned: 0, updated: 0, unmapped: 0 };
+  }
+
+  const rawDaos =
+    daoIds && daoIds.length > 0
+      ? await db.select().from(daos).where(inArray(daos.id, daoIds))
+      : await db.select().from(daos);
+  const all = resolveSyncTargets(rawDaos, daoIds);
   let updated = 0;
   let unmapped = 0;
 

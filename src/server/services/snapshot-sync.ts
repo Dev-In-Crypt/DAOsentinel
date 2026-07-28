@@ -12,6 +12,7 @@ import {
   WHALE_VP_PCT_THRESHOLD,
   LAST_MINUTE_WINDOW_PCT,
 } from '@/lib/constants';
+import { resolveSyncTargets } from './sync-targets';
 
 interface SyncResult {
   fetched: number;
@@ -23,11 +24,26 @@ interface SyncResult {
 /**
  * Fetches active + recently-closed proposals for all tracked DAOs and upserts
  * them into the proposals table. Idempotent.
+ *
+ * `daoIds` (TODO-056, priority sync path) is an OPTIONAL filter. When omitted
+ * (every existing caller today), behavior is byte-for-byte identical to
+ * before this parameter existed: the same unfiltered `db.select().from(daos)`
+ * query runs, with no `where` clause added. When provided:
+ *   - a non-empty array narrows the scan to just those DAO ids (via `inArray`).
+ *   - an explicit empty array is a no-op — it means "sync these zero DAOs,"
+ *     never "no filter," and returns immediately without touching the DB.
  */
-export async function syncProposals(): Promise<SyncResult> {
+export async function syncProposals(daoIds?: string[]): Promise<SyncResult> {
   const result: SyncResult = { fetched: 0, inserted: 0, updated: 0, errors: 0 };
 
-  const allDaos = await db.select().from(daos);
+  // Explicit empty list = sync zero DAOs. Never fall through to "sync everything".
+  if (daoIds && daoIds.length === 0) return result;
+
+  const rawDaos =
+    daoIds && daoIds.length > 0
+      ? await db.select().from(daos).where(inArray(daos.id, daoIds))
+      : await db.select().from(daos);
+  const allDaos = resolveSyncTargets(rawDaos, daoIds);
   if (!allDaos.length) return result;
 
   const daoBySpace = new Map(allDaos.map((d) => [d.snapshotSpaceId ?? '', d]));
