@@ -1,7 +1,7 @@
 import 'dotenv/config';
 import { basename } from 'node:path';
 import { eq, and } from 'drizzle-orm';
-import { db } from '../src/server/db';
+import { db, pgClient } from '../src/server/db';
 import { organizations, organizationMembers, users } from '../src/server/db/schema';
 import { sendOrgOnboardingEmail } from '../src/server/services/org-onboarding';
 
@@ -107,6 +107,18 @@ export function parseArgs(argv: string[]): ParsedArgs {
   };
 }
 
+/**
+ * Closes the pooled DB connection before exiting. Without this, an abrupt
+ * `process.exit()` while the pool still holds open sockets can crash the
+ * process on Windows (libuv assertion `UV_HANDLE_CLOSING`) instead of
+ * exiting cleanly — mirrors the pattern already used by
+ * src/server/db/migrate.ts's own throwaway connection.
+ */
+async function exitAfterClosingDb(code: number): Promise<never> {
+  await pgClient.end({ timeout: 5 });
+  process.exit(code);
+}
+
 async function main() {
   let args: ParsedArgs;
   try {
@@ -125,11 +137,11 @@ async function main() {
 
   if (!org) {
     console.error(`No organization found with id "${args.orgId}".`);
-    process.exit(1);
+    await exitAfterClosingDb(1);
   }
   if (!org.active) {
     console.error(`Organization "${args.orgId}" exists but is not active — activate it first.`);
-    process.exit(1);
+    await exitAfterClosingDb(1);
   }
 
   const [user] = await db.select().from(users).where(eq(users.email, args.email)).limit(1);
@@ -137,7 +149,7 @@ async function main() {
     console.error(
       `No DAO Sentinel account found for "${args.email}" — the person must sign up via the public magic-link flow at /login first, then re-run this script.`,
     );
-    process.exit(1);
+    await exitAfterClosingDb(1);
   }
 
   try {
@@ -156,16 +168,16 @@ async function main() {
       .limit(1);
     if (existing) {
       console.error(`${args.email} is already a member of "${org.name}".`);
-      process.exit(1);
+      await exitAfterClosingDb(1);
     }
     console.error('Failed to add organization member.');
     console.error((err as Error).message ?? err);
-    process.exit(1);
+    await exitAfterClosingDb(1);
   }
 
   if (!args.sendEmail) {
     console.log('Skipping onboarding email (--no-email passed).');
-    process.exit(0);
+    await exitAfterClosingDb(0);
   }
 
   const result = await sendOrgOnboardingEmail(args.orgId, args.email);
@@ -178,7 +190,7 @@ async function main() {
   } else {
     console.log(`Onboarding email not sent: ${result.reason ?? 'unknown reason'}.`);
   }
-  process.exit(0);
+  await exitAfterClosingDb(0);
 }
 
 // Guard against side effects when this module is imported for unit testing

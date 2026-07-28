@@ -1,6 +1,6 @@
 import 'dotenv/config';
 import { basename } from 'node:path';
-import { db } from '../src/server/db';
+import { db, pgClient } from '../src/server/db';
 import { organizations } from '../src/server/db/schema';
 import { hexToHsl } from '../src/lib/color';
 
@@ -189,6 +189,18 @@ export function parseArgs(argv: string[]): ParsedArgs {
   };
 }
 
+/**
+ * Closes the pooled DB connection before exiting. Without this, an abrupt
+ * `process.exit()` while the pool still holds open sockets can crash the
+ * process on Windows (libuv assertion `UV_HANDLE_CLOSING`) instead of
+ * exiting cleanly — mirrors the pattern already used by
+ * src/server/db/migrate.ts's own throwaway connection.
+ */
+async function exitAfterClosingDb(code: number): Promise<never> {
+  await pgClient.end({ timeout: 5 });
+  process.exit(code);
+}
+
 async function main() {
   let args: ParsedArgs;
   try {
@@ -243,14 +255,14 @@ async function main() {
     console.log(
       `Reminder (per MONETIZATION.md runbook): confirm the row looks right, then send the customer their access details manually.`,
     );
-    process.exit(0);
+    await exitAfterClosingDb(0);
   } catch (err) {
     console.error('Failed to activate organization.');
     console.error(
       'This usually means the database is unreachable (check DATABASE_URL) or the insert violated a constraint (e.g. duplicate subdomain).',
     );
     console.error((err as Error).message ?? err);
-    process.exit(1);
+    await exitAfterClosingDb(1);
   }
 }
 
