@@ -305,14 +305,50 @@ describe('describeAlert — malformed jsonb data', () => {
 });
 
 describe('describeAlerts — ordering', () => {
+  // Distinct proposals per row: whale alerts are thinned per proposal (see the
+  // thinning describe below), so reusing one proposal here would drop rows and
+  // stop this testing what it means to test — the ordering.
   it('puts critical before warning, then most recent first', () => {
     const ordered = describeAlerts([
-      row({ id: 'w-old', severity: 'warning', createdAt: new Date('2026-07-18T00:00:00Z') }),
-      row({ id: 'c-old', severity: 'critical', createdAt: new Date('2026-07-17T00:00:00Z') }),
-      row({ id: 'w-new', severity: 'warning', createdAt: new Date('2026-07-21T00:00:00Z') }),
-      row({ id: 'c-new', severity: 'critical', createdAt: new Date('2026-07-22T00:00:00Z') }),
+      row({ id: 'w-old', severity: 'warning', proposalTitle: 'P1', createdAt: new Date('2026-07-18T00:00:00Z') }),
+      row({ id: 'c-old', severity: 'critical', proposalTitle: 'P2', createdAt: new Date('2026-07-17T00:00:00Z') }),
+      row({ id: 'w-new', severity: 'warning', proposalTitle: 'P3', createdAt: new Date('2026-07-21T00:00:00Z') }),
+      row({ id: 'c-new', severity: 'critical', proposalTitle: 'P4', createdAt: new Date('2026-07-22T00:00:00Z') }),
     ]);
     expect(ordered.map((a) => a.id)).toEqual(['c-new', 'c-old', 'w-new', 'w-old']);
+  });
+
+  // Regression guard for a real defect found running the report against live
+  // Aavegotchi data: twelve whale alerts on four clones of two proposals filled
+  // the whole section with the same boilerplate and pushed out every other
+  // alert type.
+  it('keeps at most two whale alerts per proposal, but never thins other types', () => {
+    const whales = describeAlerts([
+      row({ id: 'w1', createdAt: new Date('2026-07-22T00:00:00Z') }),
+      row({ id: 'w2', createdAt: new Date('2026-07-21T00:00:00Z') }),
+      row({ id: 'w3', createdAt: new Date('2026-07-20T00:00:00Z') }),
+      row({ id: 'w4', createdAt: new Date('2026-07-19T00:00:00Z') }),
+    ]);
+    expect(whales.map((a) => a.id)).toEqual(['w1', 'w2']);
+
+    // Same proposal, different types — none of these are whale_vote, so all survive.
+    const mixed = describeAlerts([
+      row({ id: 'q', type: 'quorum_risk', data: { total: 1, quorum: 2, progress: 0.5 } }),
+      row({ id: 's', type: 'last_minute_swing', data: { previousLeader: 0, currentLeader: 1 } }),
+      row({ id: 'c', type: 'coordinated_voting', data: { voters: ['0xa'], choice: 1 } }),
+    ]);
+    expect(mixed).toHaveLength(3);
+  });
+
+  it('thins per proposal independently, not globally', () => {
+    const out = describeAlerts([
+      row({ id: 'a1', proposalTitle: 'A', createdAt: new Date('2026-07-22T00:00:00Z') }),
+      row({ id: 'a2', proposalTitle: 'A', createdAt: new Date('2026-07-21T00:00:00Z') }),
+      row({ id: 'a3', proposalTitle: 'A', createdAt: new Date('2026-07-20T00:00:00Z') }),
+      row({ id: 'b1', proposalTitle: 'B', createdAt: new Date('2026-07-19T00:00:00Z') }),
+      row({ id: 'b2', proposalTitle: 'B', createdAt: new Date('2026-07-18T00:00:00Z') }),
+    ]);
+    expect(out.map((a) => a.id)).toEqual(['a1', 'a2', 'b1', 'b2']);
   });
 
   it('returns an empty array for no rows', () => {

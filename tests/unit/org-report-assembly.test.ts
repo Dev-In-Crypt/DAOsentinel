@@ -69,6 +69,7 @@ const BUSY_WHALES: WhaleContextItem[] = [
     delegate: {
       address: '0x1234567890abcdef1234567890abcdef12345678',
       displayName: 'blockchainer.eth',
+      isPubliclyIdentified: true,
       karmaScore: 88.5,
       karmaRank: 7,
       karmaUrl: null,

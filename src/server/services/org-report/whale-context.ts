@@ -34,6 +34,41 @@ import { formatNumber, shortenAddress } from '@/lib/utils';
 /** Matches the 8-row cap `gatherDigestData` already uses for the whale section. */
 const WHALE_CONTEXT_LIMIT = 8;
 
+/** How many alerts to pull before thinning — see `thinPerVoter`. */
+const WHALE_CONTEXT_FETCH_LIMIT = 60;
+
+/**
+ * Distinct voters matter more than distinct votes: hearing that one address is
+ * heavy on four clones of the same proposal is one fact, not four.
+ */
+export const WHALE_CONTEXT_MAX_PER_VOTER = 2;
+
+/**
+ * Keeps at most `WHALE_CONTEXT_MAX_PER_VOTER` entries per voter address
+ * (newest first, since the input is already ordered by `createdAt` desc), then
+ * caps the result at `WHALE_CONTEXT_LIMIT`. Exported for unit testing.
+ */
+export function thinPerVoter<T extends { data: { voter: string | null } }>(items: T[]): T[] {
+  const perVoter = new Map<string, number>();
+  const kept: T[] = [];
+
+  for (const item of items) {
+    if (kept.length >= WHALE_CONTEXT_LIMIT) break;
+    // An unparseable voter can't be grouped; keep it rather than drop a signal.
+    const key = item.data.voter;
+    if (key === null) {
+      kept.push(item);
+      continue;
+    }
+    const seen = perVoter.get(key) ?? 0;
+    if (seen >= WHALE_CONTEXT_MAX_PER_VOTER) continue;
+    perVoter.set(key, seen + 1);
+    kept.push(item);
+  }
+
+  return kept;
+}
+
 /**
  * Voting types where subtracting one voter's power from one choice index is
  * a meaningful counterfactual. Under approval / ranked-choice / weighted /
@@ -60,6 +95,15 @@ export interface WhaleDelegateProfile {
   address: string;
   /** `ensName ?? name ?? shortenAddress(address)` — never blank. */
   displayName: string;
+  /**
+   * True only when an ENS/display name or a Karma profile actually identifies
+   * this address publicly. A row in `delegates` does NOT imply this:
+   * `rebuildDelegateProfiles` materialises one for every frequent voter
+   * straight out of `votes`. Needed because `displayName` falls back to the
+   * shortened address and so is never null — checking it cannot distinguish
+   * "known delegate" from "address we happen to have seen a lot".
+   */
+  isPubliclyIdentified: boolean;
   karmaScore: number | null;
   karmaRank: number | null;
   karmaUrl: string | null;
@@ -391,9 +435,16 @@ export async function fetchWhaleContext(
       and(eq(alerts.daoId, daoId), eq(alerts.type, 'whale_vote'), gt(alerts.createdAt, weekAgo)),
     )
     .orderBy(desc(alerts.createdAt))
-    .limit(WHALE_CONTEXT_LIMIT);
+    // Over-fetch, then thin per voter below. Taking the newest N outright
+    // reads badly on real data: DAOs that run near-duplicate proposals (e.g.
+    // Aavegotchi's "[25-day-clone]"/"[32-day-clone]" pairs of one SIGPROP)
+    // produced eight entries that were the same two whales repeated four
+    // times each, crowding out every other voter.
+    .limit(WHALE_CONTEXT_FETCH_LIMIT);
 
-  const parsed = rows.map((row) => ({ row, data: parseWhaleAlertData(row.data) }));
+  const parsed = thinPerVoter(
+    rows.map((row) => ({ row, data: parseWhaleAlertData(row.data) })),
+  );
 
   // One batched lookup for every distinct voter, not one query per alert.
   const voterAddresses = [
@@ -433,6 +484,10 @@ export async function fetchWhaleContext(
       {
         address: d.address,
         displayName: displayNameFor(d),
+        isPubliclyIdentified:
+          asNonEmptyString(d.ensName) !== null ||
+          asNonEmptyString(d.name) !== null ||
+          asFiniteNumber(d.karmaScore) !== null,
         karmaScore: asFiniteNumber(d.karmaScore),
         karmaRank: d.karmaRank ?? null,
         karmaUrl: asNonEmptyString(d.karmaUrl),
@@ -499,7 +554,17 @@ function formatIdentityLine(item: WhaleContextItem): string {
   if (d.daoVotingPower !== null) facts.push(`${formatNumber(d.daoVotingPower)} VP here`);
 
   const summary = facts.length ? facts.join(' · ') : 'no reputation metrics recorded';
-  return `  - Known delegate — ${summary}.`;
+
+  // "Known delegate" is only honest when something actually identifies them
+  // publicly — an ENS/display name, or a Karma delegate profile. A bare row in
+  // `delegates` proves nothing: rebuildDelegateProfiles materialises a row for
+  // EVERY frequent voter straight out of the votes table. Calling such an
+  // address a known delegate tells a paying customer they can go talk to
+  // someone who may have no public identity at all.
+  const label = d.isPubliclyIdentified
+    ? 'Known delegate'
+    : 'Recurring voter we track — no public delegate identity';
+  return `  - ${label} — ${summary}.`;
 }
 
 const INDETERMINATE_PROSE: Record<DecisivenessReason, string> = {

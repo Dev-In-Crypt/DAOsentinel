@@ -283,14 +283,35 @@ function createdAtMs(value: Date): number {
  * orders identically; re-sorting here keeps the pure layer self-contained
  * (and testable) rather than depending on the caller's query.
  */
+/**
+ * How many `whale_vote` alerts to show for any one proposal. A contentious
+ * vote can draw a dozen whales; on real data (Aavegotchi) that filled the
+ * entire section with the same boilerplate twelve times and pushed every
+ * other alert type out of the report. The rest are counted, not hidden.
+ */
+export const MAX_WHALE_ALERTS_PER_PROPOSAL = 2;
+
 export function describeAlerts(rows: AttentionAlertRow[]): AttentionAlert[] {
-  return rows
+  const sorted = rows
     .map(describeAlert)
     .sort(
       (a, b) =>
         severityRank(a.severity) - severityRank(b.severity) ||
         createdAtMs(b.createdAt) - createdAtMs(a.createdAt),
     );
+
+  // Thin whale_vote runs per proposal, keeping the highest-severity/newest
+  // ones (the sort above already ordered them). Other types pass through
+  // untouched — there is only ever one score_drop or quorum_risk per subject.
+  const perProposal = new Map<string, number>();
+  return sorted.filter((a) => {
+    if (a.type !== 'whale_vote') return true;
+    const key = a.proposalTitle ?? a.id;
+    const seen = perProposal.get(key) ?? 0;
+    if (seen >= MAX_WHALE_ALERTS_PER_PROPOSAL) return false;
+    perProposal.set(key, seen + 1);
+    return true;
+  });
 }
 
 const SEVERITY_MARKERS: Record<string, string> = {

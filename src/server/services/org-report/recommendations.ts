@@ -458,16 +458,49 @@ function ruleScoreMetrics(attribution: ScoreAttribution | null | undefined): Rec
 }
 
 /**
- * The honest empty case. Not a placeholder: it states what was actually
- * examined, so "nothing to do" is itself a traceable result rather than a
- * section that failed to render.
+ * The fallback when no specific rule matched. Two genuinely different cases,
+ * and conflating them was a real bug caught on live data:
+ *
+ * A quiet week (nothing fired anywhere) can honestly say governance looks
+ * normal. But a week where alerts and whale votes DID fire and simply didn't
+ * match any rule's shape is not normal — it's unmatched. Aavegotchi uses
+ * `weighted` voting, so every whale verdict degrades to "undetermined" and no
+ * whale rule can fire; quorum sat at 22% with 17 days left, so no quorum rule
+ * could fire either. The old single-branch version then printed "governance is
+ * proceeding normally on every signal we track" directly above twelve CRITICAL
+ * whale alerts, one of them a single address holding 68.5% of the vote.
+ *
+ * Claiming normality over evidence of the opposite is the worst thing this
+ * report could do to a paying customer, so when signals exist the fallback
+ * says what fired and hands it to a human instead.
  */
 function noActionNeeded(input: RecommendationInput, now: Date): Recommendation {
   const open = (input.upcoming ?? []).filter((i) => i.phase === 'open').length;
-  const alerts = (input.alerts ?? []).length;
+  const alertList = input.alerts ?? [];
+  const alerts = alertList.length;
+  const critical = alertList.filter((a) => a.severity === 'critical').length;
   const whales = (input.whales ?? []).length;
   const drivers =
     input.attribution?.status === 'attributed' ? input.attribution.drivers.length : 0;
+
+  const reviewed = `Reviewed ${plural(open, 'open vote', 'open votes')}, ${plural(alerts, 'actionable alert', 'actionable alerts')}, ${plural(whales, 'whale vote', 'whale votes')} and ${plural(drivers, 'score driver', 'score drivers')} for the week ending ${isoDay(now)}`;
+
+  // Signals fired but matched no rule — do not call that "normal".
+  if (alerts > 0 || whales > 0) {
+    const highlight =
+      critical > 0
+        ? `${plural(critical, 'critical alert', 'critical alerts')} fired`
+        : `${plural(alerts, 'alert', 'alerts')} fired`;
+    return {
+      ruleId: 'no_action_needed',
+      subject: 'week',
+      priority: 'medium',
+      action:
+        'Review this week manually — activity was flagged, but none of it matched a rule this report can act on automatically.',
+      evidence: `${reviewed}. ${highlight}, but no recommendation rule matched: the outcome-impact test is inconclusive under this DAO's voting type, or no open vote is short of quorum in its final stretch. Read the alerts and whale sections below and judge directly — absence of a rule match is not evidence that nothing is wrong.`,
+      deadline: null,
+    };
+  }
 
   return {
     ruleId: 'no_action_needed',
@@ -475,7 +508,7 @@ function noActionNeeded(input: RecommendationInput, now: Date): Recommendation {
     priority: 'low',
     action:
       'No action required from this report — governance is proceeding normally on every signal we track.',
-    evidence: `Reviewed ${plural(open, 'open vote', 'open votes')}, ${plural(alerts, 'actionable alert', 'actionable alerts')}, ${plural(whales, 'whale vote', 'whale votes')} and ${plural(drivers, 'score driver', 'score drivers')} for the week ending ${isoDay(now)}; none met the trigger for any recommendation rule.`,
+    evidence: `${reviewed}; nothing fired on any signal we track.`,
     deadline: null,
   };
 }

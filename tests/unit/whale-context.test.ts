@@ -344,7 +344,8 @@ describe('fetchWhaleContext', () => {
     expect(item?.proposalId).toBe('proposal-uuid-1');
     expect(item?.delegate).toEqual({
       address: WHALE,
-      displayName: 'grantsguild.eth', // ensName wins over name
+      displayName: 'grantsguild.eth',
+          isPubliclyIdentified: true, // ensName wins over name
       karmaScore: 82.5,
       karmaRank: 14,
       karmaUrl: 'https://karmahq.xyz/x',
@@ -474,6 +475,7 @@ describe('formatWhaleContextSection', () => {
         delegate: {
           address: WHALE,
           displayName: 'grantsguild.eth',
+          isPubliclyIdentified: true,
           karmaScore: 82.5,
           karmaRank: 14,
           karmaUrl: null,
@@ -491,6 +493,34 @@ describe('formatWhaleContextSection', () => {
     expect(md).toContain('91% participation');
     expect(md).toContain('340 votes cast');
     expect(md).toContain('1.20M VP here');
+  });
+
+  // Regression guard from the live Aavegotchi run: every whale rendered as
+  // "Known delegate" purely because `rebuildDelegateProfiles` creates a row
+  // for any frequent voter. `displayName` can't distinguish the two cases —
+  // it falls back to the shortened address and so is never null.
+  it('does not call a delegate "known" without an ENS/display name or Karma profile', () => {
+    const md = formatWhaleContextSection([
+      item({
+        delegate: {
+          address: WHALE,
+          displayName: '0xabcd…ef01',
+          isPubliclyIdentified: false,
+          karmaScore: null,
+          karmaRank: null,
+          karmaUrl: null,
+          participationRate: 1,
+          totalVotesCast: 17,
+          totalDaosActive: 1,
+          daoVotingPower: 141460,
+        },
+      }),
+    ]);
+    expect(md).not.toContain('Known delegate');
+    expect(md).toContain('Recurring voter we track — no public delegate identity');
+    // The metrics we DO have are still shown — this is a labelling fix, not a
+    // reason to withhold data.
+    expect(md).toContain('17 votes cast');
   });
 
   it('says plainly that an unknown wallet has no profile, with no blank metrics', () => {

@@ -83,6 +83,7 @@ function delegateProfile(overrides: Partial<WhaleDelegateProfile> = {}): WhaleDe
   return {
     address: '0xaaaabbbbccccddddeeeeffff0000111122223333',
     displayName: 'gauntlet.eth',
+    isPubliclyIdentified: true,
     karmaScore: 88.4,
     karmaRank: 3,
     karmaUrl: null,
