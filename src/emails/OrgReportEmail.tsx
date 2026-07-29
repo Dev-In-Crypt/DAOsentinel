@@ -117,6 +117,7 @@ export default function OrgReportEmail(p: OrgReportEmailProps) {
 
 type Block =
   | { kind: 'h1' | 'h2' | 'p'; text: string }
+  | { kind: 'hr' }
   | { kind: 'bullets'; items: string[] };
 
 /** Splits the body into blocks. Anything unrecognised falls through as a paragraph. */
@@ -126,7 +127,12 @@ function parseBlocks(markdown: string): Block[] {
     const line = rawLine.trimEnd();
     if (line.trim() === '') continue;
 
-    if (line.startsWith('## ')) {
+    if (/^-{3,}$/.test(line.trim())) {
+      // The report body's thematic break before its methodology footer. Without
+      // this arm it would fall through to the paragraph case and print "---" as
+      // literal text in a paid email.
+      blocks.push({ kind: 'hr' });
+    } else if (line.startsWith('## ')) {
       blocks.push({ kind: 'h2', text: line.slice(3).trim() });
     } else if (line.startsWith('# ')) {
       blocks.push({ kind: 'h1', text: line.slice(2).trim() });
@@ -187,6 +193,9 @@ function MarkdownBody({ markdown, accent }: { markdown: string; accent: string }
               {renderInline(block.text)}
             </Text>
           );
+        }
+        if (block.kind === 'hr') {
+          return <Hr key={i} style={hr} />;
         }
         if (block.kind === 'bullets') {
           return (

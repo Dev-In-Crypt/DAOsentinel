@@ -1,11 +1,19 @@
 import { describe, it, expect } from 'vitest';
-import {
-  formatFallback,
-  digestScope,
-  formatCuratedNotesSection,
-  type DigestPayload,
-  type CuratedDigestNote,
-} from '@/server/services/digest-generator';
+import { formatFallback, digestScope, type DigestPayload } from '@/server/services/digest-generator';
+
+/**
+ * TODO-068 removed `formatCuratedNotesSection` (and its private
+ * `fetchOrgDigestNotes`) from digest-generator.ts. It read `org_notes`
+ * org-wide, so a two-DAO org saw DAO B's notes on DAO A's report; the
+ * DAO-scoped replacement is `fetchOrgNotesForDao` (src/server/api/org-notes.ts,
+ * covered by tests/unit/org-notes.test.ts) rendered by
+ * `formatConciergeNotesSection` (src/server/services/org-report/index.ts,
+ * covered by tests/unit/org-report-assembly.test.ts). Its describe block moved
+ * there rather than being dropped.
+ *
+ * What remains in this file is the FREE public digest path, which TODO-068 did
+ * not touch.
+ */
 
 const EMPTY: DigestPayload = {
   weekOf: new Date('2026-07-06T00:00:00Z'),
@@ -93,53 +101,5 @@ describe('digestScope (additive daoSlug filter — no-regression guarantee)', ()
     expect(unscoped).not.toEqual(scoped);
     expect(unscoped.scoped).toBe(false);
     expect(scoped.scoped).toBe(true);
-  });
-});
-
-describe('formatCuratedNotesSection', () => {
-  it('renders nothing when there are no notes (org digest degrades to just formatFallback)', () => {
-    expect(formatCuratedNotesSection([])).toBe('');
-  });
-
-  it('renders a heading + one bullet per note, using the resolved subject title when present', () => {
-    const notes: CuratedDigestNote[] = [
-      {
-        subjectType: 'proposal',
-        subjectId: 'p-1',
-        note: 'Concierge flagged this as high priority for the client.',
-        subjectTitle: 'Fee switch activation',
-      },
-      {
-        subjectType: 'alert',
-        subjectId: 'a-1',
-        note: 'Discussed on last week\'s call.',
-      },
-    ];
-    const section = formatCuratedNotesSection(notes);
-    expect(section).toContain('## 🗒️ Concierge notes');
-    expect(section).toContain(
-      '- **[proposal]** Fee switch activation — Concierge flagged this as high priority for the client.',
-    );
-    // Falls back to the raw subjectId when no title could be resolved.
-    expect(section).toContain('- **[alert]** a-1 — Discussed on last week\'s call.');
-  });
-
-  it('appends cleanly onto formatFallback output, matching the digest\'s existing section style', () => {
-    const payload: DigestPayload = {
-      weekOf: new Date('2026-07-06T00:00:00Z'),
-      topProposals: [],
-      whaleAlerts: [],
-      scoreMovers: [],
-      upcoming: [],
-    };
-    const body =
-      formatFallback('DAO Sentinel Weekly — 2026-07-06', payload) +
-      formatCuratedNotesSection([
-        { subjectType: 'proposal', subjectId: 'p-1', note: 'Note text', subjectTitle: 'Title' },
-      ]);
-    expect(body).toContain('## 📅 Coming up');
-    expect(body).toContain('## 🗒️ Concierge notes');
-    // Curated section comes after the standard sections, not interleaved.
-    expect(body.indexOf('## 📅 Coming up')).toBeLessThan(body.indexOf('## 🗒️ Concierge notes'));
   });
 });
