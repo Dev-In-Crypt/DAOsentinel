@@ -10,7 +10,14 @@ import { VoteTimeline } from '@/components/proposals/VoteTimeline';
 import { QuorumBar } from '@/components/proposals/QuorumBar';
 import { ProposalBody } from '@/components/proposals/ProposalBody';
 import { SimilarProposals } from '@/components/proposals/SimilarProposals';
-import { formatNumber, formatUsdValue, shortenAddress, timeAgo, timeRemaining } from '@/lib/utils';
+import {
+  formatNumber,
+  formatUsdValue,
+  isValidUuid,
+  shortenAddress,
+  timeAgo,
+  timeRemaining,
+} from '@/lib/utils';
 
 // force-dynamic (not ISR): see src/app/(app)/daos/[slug]/page.tsx for why —
 // the root layout's headers() call (TODO-058 branding) conflicts with ISR.
@@ -22,6 +29,7 @@ export async function generateMetadata({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
+  if (!isValidUuid(id)) return { title: 'Proposal — DAO Sentinel' };
   const [row] = await db
     .select({ title: proposals.title, dao: daos.name })
     .from(proposals)
@@ -46,6 +54,7 @@ export default async function ProposalDetailPage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
+  if (!isValidUuid(id)) notFound();
   const [row] = await db
     .select({ proposal: proposals, dao: daos })
     .from(proposals)

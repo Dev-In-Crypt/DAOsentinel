@@ -5,6 +5,19 @@ export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
 
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/**
+ * Postgres throws "invalid input syntax for type uuid" for a malformed
+ * value, not "0 rows" — a route param that's supposed to be a uuid (a
+ * truncated/mistyped URL, a bot probing random paths) must be checked
+ * *before* it reaches a query, or `notFound()`'s intended 404 turns into an
+ * unhandled 500 instead.
+ */
+export function isValidUuid(value: string): boolean {
+  return UUID_RE.test(value);
+}
+
 export function shortenAddress(address: string, chars = 4): string {
   if (!address) return '';
   if (address.length <= chars * 2 + 2) return address;

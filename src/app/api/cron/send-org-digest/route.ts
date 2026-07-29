@@ -4,6 +4,7 @@ import { db } from '@/server/db';
 import { organizations } from '@/server/db/schema';
 import { requireCronAuth } from '@/server/api/cron-auth';
 import { runOrgDigestJob } from '@/server/jobs/send-org-digest';
+import { isValidUuid } from '@/lib/utils';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -38,6 +39,9 @@ export async function GET(req: Request) {
       { ok: false, error: 'organizationId and daoSlug query params are required' },
       { status: 400 },
     );
+  }
+  if (!isValidUuid(organizationId)) {
+    return NextResponse.json({ ok: false, error: 'organizationId is not a valid id' }, { status: 400 });
   }
 
   const [org] = await db

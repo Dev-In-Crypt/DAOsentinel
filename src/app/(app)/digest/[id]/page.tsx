@@ -6,6 +6,7 @@ import { db } from '@/server/db';
 import { digests } from '@/server/db/schema';
 import { eq } from 'drizzle-orm';
 import { Badge } from '@/components/ui/badge';
+import { isValidUuid } from '@/lib/utils';
 
 // force-dynamic (not ISR): see src/app/(app)/daos/[slug]/page.tsx for why —
 // the root layout's headers() call (TODO-058 branding) conflicts with ISR.
@@ -17,6 +18,7 @@ export async function generateMetadata({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
+  if (!isValidUuid(id)) return { title: 'Digest — DAO Sentinel' };
   const [d] = await db
     .select({ title: digests.title })
     .from(digests)
@@ -27,6 +29,7 @@ export async function generateMetadata({
 
 export default async function DigestPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
+  if (!isValidUuid(id)) notFound();
   const [d] = await db.select().from(digests).where(eq(digests.id, id)).limit(1);
   if (!d) notFound();
 
