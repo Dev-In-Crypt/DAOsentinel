@@ -1,9 +1,10 @@
 import { NextResponse } from 'next/server';
-import { desc, asc, eq, and, inArray } from 'drizzle-orm';
+import { desc, asc, eq, and } from 'drizzle-orm';
 import { auth } from '@/server/auth';
 import { db } from '@/server/db';
-import { daos, proposals, alerts, scoreHistory, users, orgNotes } from '@/server/db/schema';
+import { daos, proposals, alerts, scoreHistory, users } from '@/server/db/schema';
 import { requireOrgAccess } from '@/server/api/org-auth';
+import { fetchOrgNotesForDao, formatUnresolvedNotesNotice } from '@/server/api/org-notes';
 import { formatOrgReportCsv } from '@/lib/org-report-csv';
 
 export const runtime = 'nodejs';
@@ -33,6 +34,10 @@ export const dynamic = 'force-dynamic';
  *
  * Queries mirror the dashboard page's queries byte-for-byte (same filters,
  * ordering, and limits) so the exported CSV always matches what's on screen.
+ * As of TODO-069 the curated-notes half of that invariant is enforced rather
+ * than merely maintained by hand: both this route and the page call the same
+ * `fetchOrgNotesForDao` helper (src/server/api/org-notes.ts), so the note set,
+ * the DAO scoping, and the excluded-note copy cannot drift apart.
  */
 export async function GET(
   req: Request,
@@ -69,7 +74,7 @@ export async function GET(
     return new NextResponse('Not found', { status: 404 });
   }
 
-  const [active, recent, recentAlerts, history, notes] = await Promise.all([
+  const [active, recent, recentAlerts, history, curatedNotes] = await Promise.all([
     db
       .select()
       .from(proposals)
@@ -94,42 +99,10 @@ export async function GET(
       .where(eq(scoreHistory.daoId, dao.id))
       .orderBy(asc(scoreHistory.computedAt))
       .limit(90),
-    db
-      .select({
-        id: orgNotes.id,
-        subjectType: orgNotes.subjectType,
-        subjectId: orgNotes.subjectId,
-        note: orgNotes.note,
-        createdAt: orgNotes.createdAt,
-        authorName: users.name,
-        authorEmail: users.email,
-      })
-      .from(orgNotes)
-      .innerJoin(users, eq(users.id, orgNotes.authorUserId))
-      .where(eq(orgNotes.organizationId, organization.id))
-      .orderBy(desc(orgNotes.createdAt))
-      .limit(50),
+    // TODO-069: the dashboard page's identical call — DAO-scoped notes with
+    // the same subject resolution and the same excluded-note policy.
+    fetchOrgNotesForDao(organization.id, dao.id),
   ]);
-
-  // Same best-effort subject-title resolution as the dashboard page.
-  const proposalIds = notes.filter((n) => n.subjectType === 'proposal').map((n) => n.subjectId);
-  const alertIds = notes.filter((n) => n.subjectType === 'alert').map((n) => n.subjectId);
-  const [subjectProposals, subjectAlerts] = await Promise.all([
-    proposalIds.length
-      ? db
-          .select({ id: proposals.id, title: proposals.title })
-          .from(proposals)
-          .where(inArray(proposals.id, proposalIds))
-      : Promise.resolve([]),
-    alertIds.length
-      ? db
-          .select({ id: alerts.id, title: alerts.title })
-          .from(alerts)
-          .where(inArray(alerts.id, alertIds))
-      : Promise.resolve([]),
-  ]);
-  const proposalTitleById = new Map(subjectProposals.map((p) => [p.id, p.title]));
-  const alertTitleById = new Map(subjectAlerts.map((a) => [a.id, a.title]));
 
   const csv = formatOrgReportCsv({
     organizationName: organization.brandingDisplayName ?? organization.name,
@@ -155,18 +128,14 @@ export async function GET(
       createdAt: a.createdAt,
     })),
     scoreHistory: history.map((h) => ({ score: Number(h.score), computedAt: h.computedAt })),
-    notes: notes.map((n) => ({
+    notes: curatedNotes.notes.map((n) => ({
       subjectType: n.subjectType,
-      subjectLabel:
-        (n.subjectType === 'proposal'
-          ? proposalTitleById.get(n.subjectId)
-          : n.subjectType === 'alert'
-            ? alertTitleById.get(n.subjectId)
-            : undefined) ?? n.subjectId,
+      subjectLabel: n.subjectLabel,
       note: n.note,
       authorLabel: n.authorName ?? n.authorEmail,
       createdAt: n.createdAt,
     })),
+    notesNotice: formatUnresolvedNotesNotice(curatedNotes.unresolvedCount, dao.name),
   });
 
   const datestamp = new Date().toISOString().slice(0, 10);

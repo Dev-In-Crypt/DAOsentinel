@@ -177,4 +177,17 @@ describe('formatOrgReportCsv', () => {
     );
     expect(csv).toContain('alert,alert-id-that-no-longer-exists,Stale reference');
   });
+
+  it('appends the excluded-notes notice after the notes section when present', () => {
+    const csv = formatOrgReportCsv(
+      baseInput({ notesNotice: '2 concierge notes could not be matched to Uniswap.' }),
+    );
+    expect(csv.endsWith('2 concierge notes could not be matched to Uniswap.')).toBe(true);
+  });
+
+  it('omits the notice line entirely when there is nothing to report', () => {
+    expect(formatOrgReportCsv(baseInput({ notesNotice: null }))).toBe(
+      formatOrgReportCsv(baseInput()),
+    );
+  });
 });

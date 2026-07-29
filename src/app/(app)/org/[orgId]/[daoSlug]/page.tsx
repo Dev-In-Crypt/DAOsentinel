@@ -1,10 +1,11 @@
 import Link from 'next/link';
 import { notFound, redirect } from 'next/navigation';
-import { desc, asc, eq, and, inArray } from 'drizzle-orm';
+import { desc, asc, eq, and } from 'drizzle-orm';
 import { auth } from '@/server/auth';
 import { db } from '@/server/db';
-import { daos, proposals, alerts, scoreHistory, users, orgNotes } from '@/server/db/schema';
+import { daos, proposals, alerts, scoreHistory, users } from '@/server/db/schema';
 import { requireOrgAccess } from '@/server/api/org-auth';
+import { fetchOrgNotesForDao, formatUnresolvedNotesNotice } from '@/server/api/org-notes';
 import { Badge } from '@/components/ui/badge';
 import { ScoreGauge } from '@/components/charts/ScoreGauge';
 import { ScoreTrend } from '@/components/charts/ScoreTrend';
@@ -79,7 +80,7 @@ export default async function OrgDaoDashboardPage({
   // src/lib/priority-sync-badge.ts for why `scoreUpdatedAt` is not used).
   const showPrioritySyncBadge = shouldShowPrioritySyncBadge(organization);
 
-  const [active, recent, recentAlerts, history, notes] = await Promise.all([
+  const [active, recent, recentAlerts, history, curatedNotes] = await Promise.all([
     db
       .select()
       .from(proposals)
@@ -104,38 +105,18 @@ export default async function OrgDaoDashboardPage({
       .where(eq(scoreHistory.daoId, dao.id))
       .orderBy(asc(scoreHistory.computedAt))
       .limit(90),
-    db
-      .select({
-        id: orgNotes.id,
-        subjectType: orgNotes.subjectType,
-        subjectId: orgNotes.subjectId,
-        note: orgNotes.note,
-        createdAt: orgNotes.createdAt,
-        authorName: users.name,
-        authorEmail: users.email,
-      })
-      .from(orgNotes)
-      .innerJoin(users, eq(users.id, orgNotes.authorUserId))
-      .where(eq(orgNotes.organizationId, organization.id))
-      .orderBy(desc(orgNotes.createdAt))
-      .limit(50),
+    // TODO-069: scoped to this DAO, not just this org — `org_notes` has no
+    // daoId column, so the helper resolves each note through its subject
+    // row (see src/server/api/org-notes.ts). The CSV export calls the exact
+    // same helper.
+    fetchOrgNotesForDao(organization.id, dao.id),
   ]);
 
-  // Best-effort resolution of what each note is attached to, so the panel can
-  // show a title instead of a bare id. Falls back to the raw id if the
-  // subject no longer exists (or subjectId doesn't parse as a uuid).
-  const proposalIds = notes.filter((n) => n.subjectType === 'proposal').map((n) => n.subjectId);
-  const alertIds = notes.filter((n) => n.subjectType === 'alert').map((n) => n.subjectId);
-  const [subjectProposals, subjectAlerts] = await Promise.all([
-    proposalIds.length
-      ? db.select({ id: proposals.id, title: proposals.title }).from(proposals).where(inArray(proposals.id, proposalIds))
-      : Promise.resolve([]),
-    alertIds.length
-      ? db.select({ id: alerts.id, title: alerts.title }).from(alerts).where(inArray(alerts.id, alertIds))
-      : Promise.resolve([]),
-  ]);
-  const proposalTitleById = new Map(subjectProposals.map((p) => [p.id, p.title]));
-  const alertTitleById = new Map(subjectAlerts.map((a) => [a.id, a.title]));
+  const notes = curatedNotes.notes;
+  const unresolvedNotesNotice = formatUnresolvedNotesNotice(
+    curatedNotes.unresolvedCount,
+    dao.name,
+  );
 
   const breakdown = (dao.scoreBreakdown ?? {}) as Record<string, number>;
 
@@ -285,31 +266,27 @@ export default async function OrgDaoDashboardPage({
         <div className="glass-card divide-y divide-[hsl(var(--line))] p-0">
           {notes.length === 0 && (
             <div className="p-8 text-center text-sm text-[hsl(var(--text-dim))]">
-              No curated notes yet for {organization.name} on {dao.name}.
+              No curated notes yet for {dao.name}. Notes on {organization.name}&apos;s other DAOs
+              appear on their own dashboards.
             </div>
           )}
-          {notes.map((n) => {
-            const subjectLabel =
-              n.subjectType === 'proposal'
-                ? proposalTitleById.get(n.subjectId)
-                : n.subjectType === 'alert'
-                  ? alertTitleById.get(n.subjectId)
-                  : undefined;
-            return (
-              <div key={n.id} className="p-4">
-                <div className="flex flex-wrap items-center gap-2 text-xs mono text-[hsl(var(--text-faint))]">
-                  <Badge variant="secondary">{n.subjectType}</Badge>
-                  <span>{subjectLabel ?? n.subjectId}</span>
-                  <span>·</span>
-                  <span>{timeAgo(n.createdAt)}</span>
-                  <span>·</span>
-                  <span>{n.authorName ?? n.authorEmail}</span>
-                </div>
-                <p className="mt-2 text-sm">{n.note}</p>
+          {notes.map((n) => (
+            <div key={n.id} className="p-4">
+              <div className="flex flex-wrap items-center gap-2 text-xs mono text-[hsl(var(--text-faint))]">
+                <Badge variant="secondary">{n.subjectType}</Badge>
+                <span>{n.subjectLabel}</span>
+                <span>·</span>
+                <span>{timeAgo(n.createdAt)}</span>
+                <span>·</span>
+                <span>{n.authorName ?? n.authorEmail}</span>
               </div>
-            );
-          })}
+              <p className="mt-2 text-sm">{n.note}</p>
+            </div>
+          ))}
         </div>
+        {unresolvedNotesNotice && (
+          <p className="mt-2 text-xs text-[hsl(var(--text-faint))]">{unresolvedNotesNotice}</p>
+        )}
         <p className="mt-2 text-xs text-[hsl(var(--text-faint))]">
           Notes are curated by the DAO Sentinel concierge team and added via direct database
           access for now — there is no in-app authoring UI in this pass.

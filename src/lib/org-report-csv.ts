@@ -57,6 +57,14 @@ export interface OrgReportCsvInput {
   alerts: OrgReportAlertRow[];
   scoreHistory: OrgReportScoreRow[];
   notes: OrgReportNoteRow[];
+  /**
+   * TODO-069: optional one-line footer for the notes section, reporting notes
+   * that were excluded because their subject could not be matched to this DAO
+   * (see `formatUnresolvedNotesNotice` in src/server/api/org-notes.ts). The
+   * dashboard shows the same sentence, so a reader reconciling the CSV against
+   * the screen sees the same count in the same words. Omitted when null.
+   */
+  notesNotice?: string | null;
 }
 
 /**
@@ -147,6 +155,10 @@ export function formatOrgReportCsv(input: OrgReportCsvInput): string {
       ]),
     ),
   );
+
+  if (input.notesNotice) {
+    parts.push(csvRow([input.notesNotice]));
+  }
 
   return parts.join('\r\n');
 }
