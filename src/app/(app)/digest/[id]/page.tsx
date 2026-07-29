@@ -63,6 +63,12 @@ export default async function DigestPage({ params }: { params: Promise<{ id: str
           <Badge variant={d.sentAt ? 'success' : 'secondary'}>
             {d.sentAt ? '✓ delivered' : 'draft'}
           </Badge>
+          <a
+            href={`/api/digest/${d.id}/export.pdf`}
+            className="text-sm mono text-[hsl(var(--indigo-bright))] hover:underline"
+          >
+            Download PDF ↓
+          </a>
         </div>
       </div>
 
