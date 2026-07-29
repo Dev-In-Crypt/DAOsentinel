@@ -12,12 +12,12 @@ import { CompareWithPicker } from '@/components/daos/CompareWithPicker';
 import { formatNumber, formatPct, timeAgo, timeRemaining } from '@/lib/utils';
 import { METRIC_HINT } from '@/lib/constants';
 
-export const revalidate = 60; // ISR — public page, data changes on cron cadence
-
-// Render on demand, then cache (ISR). No params prebuilt at compile time.
-export function generateStaticParams() {
-  return [];
-}
+// force-dynamic (not ISR): the root layout reads headers() for white-label
+// branding resolution (TODO-058), which makes the whole tree dynamic —
+// combining that with an ISR page here throws DYNAMIC_SERVER_USAGE at
+// runtime. Revalidate/generateStaticParams removed until TODO-061 (client-side
+// branding resolution) restores static rendering safely.
+export const dynamic = 'force-dynamic';
 
 export async function generateMetadata({
   params,

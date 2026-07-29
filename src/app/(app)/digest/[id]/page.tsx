@@ -7,12 +7,9 @@ import { digests } from '@/server/db/schema';
 import { eq } from 'drizzle-orm';
 import { Badge } from '@/components/ui/badge';
 
-export const revalidate = 300; // ISR — public page, data changes on cron cadence
-
-// Render on demand, then cache (ISR). No params prebuilt at compile time.
-export function generateStaticParams() {
-  return [];
-}
+// force-dynamic (not ISR): see src/app/(app)/daos/[slug]/page.tsx for why —
+// the root layout's headers() call (TODO-058 branding) conflicts with ISR.
+export const dynamic = 'force-dynamic';
 
 export async function generateMetadata({
   params,
