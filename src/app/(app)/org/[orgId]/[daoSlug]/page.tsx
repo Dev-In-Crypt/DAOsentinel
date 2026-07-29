@@ -140,6 +140,14 @@ export default async function OrgDaoDashboardPage({
             {showPrioritySyncBadge && (
               <Badge variant="default">{formatPrioritySyncBadgeLabel(dao.updatedAt)}</Badge>
             )}
+            {/* The weekly report, readable here rather than only as an email.
+                Same requireOrgAccess + orgId cross-check gate as this page. */}
+            <Link
+              href={`/org/${organization.id}/${dao.slug}/report`}
+              className="text-sm mono text-[hsl(var(--indigo-bright))] hover:underline"
+            >
+              Weekly report →
+            </Link>
             {/* TODO-060: CSV export of this dashboard's report data. Same
                 requireOrgAccess + orgId cross-check gate as this page itself
                 — see src/app/api/org/[orgId]/[daoSlug]/export.csv/route.ts. */}
