@@ -275,7 +275,8 @@ export function composeOrgReportBody(
 // Generation (the only DB-touching function here)
 // ---------------------------------------------------------------------------
 
-async function loadOrganization(organizationId: string): Promise<OrgReportOrganization> {
+/** Exported for ./store.ts, which resolves the same two rows before it can look up a stored report. */
+export async function loadOrganization(organizationId: string): Promise<OrgReportOrganization> {
   const [row] = await db
     .select({
       id: organizations.id,
@@ -296,7 +297,8 @@ async function loadOrganization(organizationId: string): Promise<OrgReportOrgani
   };
 }
 
-async function loadDao(daoSlug: string): Promise<OrgReportDao> {
+/** Exported for ./store.ts — see `loadOrganization`. */
+export async function loadDao(daoSlug: string): Promise<OrgReportDao> {
   const [row] = await db
     .select({ id: daos.id, name: daos.name, slug: daos.slug })
     .from(daos)

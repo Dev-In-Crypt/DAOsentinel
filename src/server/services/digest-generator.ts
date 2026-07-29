@@ -13,7 +13,7 @@ import {
   organizationMembers,
   users,
 } from '../db/schema';
-import { generateOrgReport, type OrgReport } from './org-report';
+import { getOrGenerateOrgReport, markOrgReportSent } from './org-report/store';
 
 const resend = process.env.RESEND_API_KEY ? new Resend(process.env.RESEND_API_KEY) : null;
 
@@ -273,9 +273,10 @@ ${upcoming || '_No active proposals._'}`;
 // formatFallback, generateDigest, sendDigestToSubscribers, renderWeeklyDigest,
 // WeeklyDigestEmail — is deliberately untouched by all of this.
 //
-// Deliberately still does NOT insert a row into `digests` — that table has no
-// per-organization scoping and adding one would require a schema migration,
-// which is explicitly out of scope (see TODO.md TODO-055).
+// Org reports ARE now persisted (TODO-072), but to their own `org_reports`
+// table, never to `digests`: `digests` is the public newsletter archive served
+// at /digest, and one customer's private report does not belong one missing
+// WHERE clause away from it. See src/server/services/org-report/store.ts.
 
 /** Org member emails — the recipient list for the org-scoped report, NOT `newsletterSubscribers`. */
 export async function fetchOrgMemberEmails(organizationId: string): Promise<string[]> {
@@ -287,27 +288,42 @@ export async function fetchOrgMemberEmails(organizationId: string): Promise<stri
   return rows.map((r) => r.email);
 }
 
-/**
- * Assembles the org-scoped weekly report (TODO-068). Thin wrapper over
- * `generateOrgReport` kept under its existing name so `sendOrgDigestToMembers`
- * and any future caller have one entry point for "the org's body for this
- * week".
- *
- * Returns the whole `OrgReport` rather than just `{ title, body }`: the send
- * path needs the org's branding and the DAO's name for the paid email
- * template, and re-querying them here would be a second round trip for rows
- * the report already loaded.
- */
-export async function generateOrgDigestBody(
-  organizationId: string,
-  daoSlug: string,
-  weekOf = new Date(),
-): Promise<OrgReport> {
-  return generateOrgReport(organizationId, daoSlug, { weekOf });
+export interface SendOrgReportOptions {
+  /** The clock. Defaults to now. */
+  now?: Date;
+  /**
+   * Re-send a week that has already been emailed. Off by default — see the
+   * idempotency note on `sendOrgDigestToMembers`.
+   */
+  force?: boolean;
+}
+
+export interface SendOrgReportResult {
+  sent: number;
+  dryRun: boolean;
+  /** True when this week's report was already emailed and `force` was not set. */
+  skipped: boolean;
+  title: string;
+  recipientCount: number;
+  reportId: string;
+  weekStart: string;
+  /** Present only when a send was actually attempted. */
+  html?: string;
 }
 
 /**
  * Sends the org-scoped weekly report to the organization's member emails.
+ *
+ * IDEMPOTENT BY DEFAULT (TODO-073). The report is fetched through
+ * `getOrGenerateOrgReport`, and a row whose `sentAt` is already set is skipped
+ * unless `force` is passed. This is what makes the weekly schedule safe: a
+ * GitHub Actions retry, an overlapping tick, or a manual re-trigger the same
+ * week can no longer mail paying customers the same report twice. `markOrgReportSent`
+ * closes the loop after a successful send.
+ *
+ * Going through the store also means the emailed document is byte-identical to
+ * the one the customer can read in the dashboard — previously the send
+ * regenerated from scratch and could differ from what the page showed.
  *
  * Renders with `renderOrgReport` (the paid `OrgReportEmail` template), NOT
  * `renderWeeklyDigest` — the public template heads the mail "DAO Sentinel
@@ -323,27 +339,50 @@ export async function generateOrgDigestBody(
  * Follows the exact same guarded-Resend pattern as `sendDigestToSubscribers`:
  * when `RESEND_API_KEY` is unset, this is a safe dry run — the payload is
  * still fully assembled and rendered (proving the pipeline works end to end,
- * per the TODO-006 dry-run precedent) but no network call is made and
- * `dryRun: true` is returned instead of a real send.
+ * per the TODO-006 dry-run precedent) but no network call is made, `sentAt` is
+ * left null, and `dryRun: true` is returned instead of a real send.
  */
 export async function sendOrgDigestToMembers(
   organizationId: string,
   daoSlug: string,
-  weekOf = new Date(),
-): Promise<{ sent: number; dryRun: boolean; title: string; recipientCount: number; html: string }> {
-  const report = await generateOrgDigestBody(organizationId, daoSlug, weekOf);
-  const { title, body } = report;
+  opts: SendOrgReportOptions = {},
+): Promise<SendOrgReportResult> {
+  const now = opts.now ?? new Date();
+  const { report, organization, dao } = await getOrGenerateOrgReport(organizationId, daoSlug, {
+    now,
+  });
+
+  const base = {
+    title: report.title,
+    reportId: report.id,
+    weekStart: report.weekStart.toISOString().slice(0, 10),
+  };
+
+  if (report.sentAt && !opts.force) {
+    console.log(
+      `[org-digest] already sent org=${organizationId} dao=${daoSlug} week=${base.weekStart} at=${report.sentAt.toISOString()} — skipping`,
+    );
+    return { ...base, sent: 0, dryRun: false, skipped: true, recipientCount: 0 };
+  }
+
   const recipients = await fetchOrgMemberEmails(organizationId);
 
   const html = await renderOrgReport({
     organizationId,
-    organizationName: report.organization.name,
-    brandingDisplayName: report.organization.brandingDisplayName,
-    brandingLogoUrl: report.organization.brandingLogoUrl,
-    brandingPrimaryColor: report.organization.brandingPrimaryColor,
-    daoName: report.dao.name,
-    daoSlug: report.dao.slug,
-    weekOf: weekOf.toLocaleDateString(),
+    organizationName: organization.name,
+    brandingDisplayName: organization.brandingDisplayName,
+    brandingLogoUrl: organization.brandingLogoUrl,
+    brandingPrimaryColor: organization.brandingPrimaryColor,
+    daoName: dao.name,
+    daoSlug: dao.slug,
+    // Fixed locale, not the server's: this string goes to the customer, and
+    // the process locale is an accident of where it runs.
+    weekOf: report.weekStart.toLocaleDateString('en-GB', {
+      day: 'numeric',
+      month: 'long',
+      year: 'numeric',
+      timeZone: 'UTC',
+    }),
     markdownBody: report.bodyWithoutTitle,
   });
 
@@ -351,8 +390,14 @@ export async function sendOrgDigestToMembers(
     console.warn(
       `[org-digest] RESEND_API_KEY missing — dry run only. org=${organizationId} dao=${daoSlug} recipients=${recipients.length}`,
     );
-    console.log(`[org-digest] dry-run rendered body for ${title}:\n${body}`);
-    return { sent: 0, dryRun: true, title, recipientCount: recipients.length, html };
+    return {
+      ...base,
+      sent: 0,
+      dryRun: true,
+      skipped: false,
+      recipientCount: recipients.length,
+      html,
+    };
   }
 
   const from = process.env.EMAIL_FROM ?? 'DAO Sentinel <noreply@daosentinel.xyz>';
@@ -360,13 +405,22 @@ export async function sendOrgDigestToMembers(
   for (let i = 0; i < recipients.length; i += 50) {
     const batch = recipients.slice(i, i + 50);
     try {
-      await resend.batch.send(batch.map((to) => ({ from, to, subject: title, html, text: body })));
+      await resend.batch.send(
+        batch.map((to) => ({ from, to, subject: report.title, html, text: report.body })),
+      );
       sent += batch.length;
     } catch (err) {
       console.error('resend org-digest batch failed', err);
     }
   }
-  return { sent, dryRun: false, title, recipientCount: recipients.length, html };
+
+  // Only stamp `sentAt` when mail actually went out. A run where every batch
+  // threw must stay retryable rather than being recorded as delivered.
+  if (sent > 0 && report.id) {
+    await markOrgReportSent(report.id, sent);
+  }
+
+  return { ...base, sent, dryRun: false, skipped: false, recipientCount: recipients.length, html };
 }
 
 export async function sendDigestToSubscribers(digestId: string): Promise<number> {

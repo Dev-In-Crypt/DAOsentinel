@@ -1,11 +1,9 @@
 import { NextResponse } from 'next/server';
-import { eq } from 'drizzle-orm';
-import { auth } from '@/server/auth';
-import { db } from '@/server/db';
-import { users } from '@/server/db/schema';
-import { requireOrgAccess } from '@/server/api/org-auth';
-import { generateOrgReport } from '@/server/services/org-report';
+import { resolveOrgReportAccess } from '@/server/api/org-report-access';
+import { loadDao } from '@/server/services/org-report';
+import { getOrGenerateOrgReport, getOrgReportById } from '@/server/services/org-report/store';
 import { renderDigestPdf } from '@/lib/pdf/digest-pdf';
+import { isValidUuid } from '@/lib/utils';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -14,11 +12,13 @@ export const dynamic = 'force-dynamic';
  * PDF of the paid org weekly report — the downloadable twin of
  * src/app/(app)/org/[orgId]/[daoSlug]/report/page.tsx.
  *
- * Gated identically to that page and to the CSV export beside it: session ->
- * user -> requireOrgAccess -> explicit orgId cross-check, failing closed with
- * an undifferentiated 404. The cross-check is not redundant: requireOrgAccess
- * only proves *some* org the caller belongs to covers daoSlug, so without it a
- * member of Org A could pull a PDF under Org B's id.
+ * Without `?id=` this serves the current week, reading the stored report
+ * (TODO-072) so the download is byte-identical to what the page showed. With
+ * `?id=<uuid>` it serves that archived week, scoped to this org and DAO inside
+ * the query — an id from another organization simply does not match.
+ *
+ * Gated by the same `resolveOrgReportAccess` as both pages, failing closed with
+ * an undifferentiated 404.
  *
  * Reuses `renderDigestPdf`, which already takes markdown — the same renderer
  * the public digest's PDF uses. Note it strips characters the standard PDF
@@ -26,38 +26,40 @@ export const dynamic = 'force-dynamic';
  * while all the text survives.
  */
 export async function GET(
-  _req: Request,
+  req: Request,
   ctx: { params: Promise<{ orgId: string; daoSlug: string }> },
 ) {
   const { orgId, daoSlug } = await ctx.params;
 
-  const session = await auth();
-  if (!session?.user?.email) {
+  const access = await resolveOrgReportAccess(orgId, daoSlug);
+  if (!access) {
     return new NextResponse('Not found', { status: 404 });
   }
 
-  const [user] = await db.select().from(users).where(eq(users.email, session.user.email)).limit(1);
-  if (!user) {
-    return new NextResponse('Not found', { status: 404 });
+  const requestedId = new URL(req.url).searchParams.get('id');
+
+  let report;
+  if (requestedId) {
+    if (!isValidUuid(requestedId)) {
+      return new NextResponse('Not found', { status: 404 });
+    }
+    const dao = await loadDao(daoSlug);
+    report = await getOrgReportById(requestedId, orgId, dao.id);
+    if (!report) {
+      return new NextResponse('Not found', { status: 404 });
+    }
+  } else {
+    report = (await getOrGenerateOrgReport(orgId, daoSlug)).report;
   }
 
-  const access = await requireOrgAccess(user.id, daoSlug);
-  if (!access.ok) {
-    return new NextResponse('Not found', { status: 404 });
-  }
-  if (access.organization.id !== orgId) {
-    return new NextResponse('Not found', { status: 404 });
-  }
-
-  const report = await generateOrgReport(orgId, daoSlug);
-
-  // Fixed locale, not the server's — keeps the label deterministic wherever
-  // the process runs, and the standard PDF fonts can't render non-Latin month
-  // names anyway.
-  const weekOfLabel = report.weekOf.toLocaleDateString('en-US', {
+  // Fixed locale and zone, not the server's — keeps the label deterministic
+  // wherever the process runs, and the standard PDF fonts can't render
+  // non-Latin month names anyway.
+  const weekOfLabel = report.weekStart.toLocaleDateString('en-US', {
     year: 'numeric',
     month: 'long',
     day: 'numeric',
+    timeZone: 'UTC',
   });
 
   // The PDF prints its own title block, so hand it the untitled body rather
@@ -68,7 +70,7 @@ export async function GET(
     body: report.bodyWithoutTitle,
   });
 
-  const datestamp = report.weekOf.toISOString().slice(0, 10);
+  const datestamp = report.weekStart.toISOString().slice(0, 10);
   const filename = `dao-sentinel-${daoSlug}-report-${datestamp}.pdf`;
 
   return new NextResponse(new Uint8Array(pdf), {

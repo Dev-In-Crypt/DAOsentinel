@@ -460,6 +460,63 @@ export const orgNotesRelations = relations(orgNotes, ({ one }) => ({
   author: one(users, { fields: [orgNotes.authorUserId], references: [users.id] }),
 }));
 
+/**
+ * TODO-072: archive of generated paid org reports.
+ *
+ * Separate from `digests` rather than an added column on it: `digests` is the
+ * PUBLIC newsletter archive, readable by anyone at /digest, and org reports are
+ * one customer's private artifact. Sharing the table would put a private body
+ * one forgotten WHERE clause away from the public archive query.
+ *
+ * `weekStart` and `generatedAt` are NOT the same instant and both are needed.
+ * `generatedAt` is the clock handed to `generateOrgReport`, which every section
+ * reads to bound its window ("alerts since generatedAt - 7d", "proposals still
+ * open at generatedAt") — bucketing it would resurrect proposals that closed
+ * earlier in the week. `weekStart` is that instant floored to Monday 00:00 UTC,
+ * and exists only so one week yields one row: it is the dedupe key the unique
+ * index enforces and the key the archive lists by.
+ */
+export const orgReports = pgTable(
+  'org_reports',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    organizationId: uuid('organization_id')
+      .notNull()
+      .references(() => organizations.id, { onDelete: 'cascade' }),
+    daoId: uuid('dao_id')
+      .notNull()
+      .references(() => daos.id, { onDelete: 'cascade' }),
+    /** Monday 00:00 UTC of the week this report covers. Dedupe + list key. */
+    weekStart: timestamp('week_start', { withTimezone: true }).notNull(),
+    /** The actual instant the report was computed from. */
+    generatedAt: timestamp('generated_at', { withTimezone: true }).notNull(),
+    title: text('title').notNull(),
+    /** Full markdown, including the leading `# ` title line. */
+    body: text('body').notNull(),
+    /** `summary.riskLevel`, lifted out so the archive list renders without parsing the body. */
+    riskLevel: text('risk_level').notNull(),
+    payload: jsonb('payload').$type<Record<string, unknown>>(),
+    /** Null until the report is emailed. The idempotency guard for the weekly cron. */
+    sentAt: timestamp('sent_at', { withTimezone: true }),
+    recipientCount: integer('recipient_count'),
+    createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  },
+  (t) => ({
+    // One report per org per DAO per week. Also the lookup index: Postgres
+    // scans this btree backwards for the "latest weeks first" archive query,
+    // so no second descending index is needed.
+    weekUniq: uniqueIndex('idx_org_reports_week').on(t.organizationId, t.daoId, t.weekStart),
+  }),
+);
+
+export const orgReportsRelations = relations(orgReports, ({ one }) => ({
+  organization: one(organizations, {
+    fields: [orgReports.organizationId],
+    references: [organizations.id],
+  }),
+  dao: one(daos, { fields: [orgReports.daoId], references: [daos.id] }),
+}));
+
 // Digests (weekly newsletter archive)
 export const digests = pgTable('digests', {
   id: uuid('id').primaryKey().defaultRandom(),
@@ -488,3 +545,5 @@ export type NewOrganization = typeof organizations.$inferInsert;
 export type OrganizationMember = typeof organizationMembers.$inferSelect;
 export type OrgNote = typeof orgNotes.$inferSelect;
 export type NewOrgNote = typeof orgNotes.$inferInsert;
+export type OrgReportRow = typeof orgReports.$inferSelect;
+export type NewOrgReportRow = typeof orgReports.$inferInsert;

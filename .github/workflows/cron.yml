@@ -15,6 +15,11 @@ on:
     - cron: '0 3 * * *'
     # Weekly digest — Monday 08:00 UTC
     - cron: '0 8 * * 1'
+    # Paid org reports (TODO-073) — Monday 09:00 UTC. An hour after the public
+    # digest so the two Resend sends don't contend, and well after the 02:00
+    # score recompute so the week's attribution is against fresh numbers.
+    # Safe to retry: each send is skipped if that week is already marked sent.
+    - cron: '0 9 * * 1'
     # Delegate profiles rebuild — daily at 04:00 UTC (paginated)
     - cron: '0 4 * * *'
     # Token price refresh — every 6 hours (CoinGecko free tier)
@@ -39,6 +44,7 @@ on:
           - compute-scores
           - sync-treasuries
           - send-digest
+          - send-org-reports
           - rebuild-delegates
           - sync-prices
           - sync-tally
@@ -75,6 +81,9 @@ jobs:
               ;;
             "0 8 * * 1")
               echo "endpoints=send-digest" >> $GITHUB_OUTPUT
+              ;;
+            "0 9 * * 1")
+              echo "endpoints=send-org-reports" >> $GITHUB_OUTPUT
               ;;
             "0 4 * * *")
               echo "endpoints=__delegates_pages__" >> $GITHUB_OUTPUT

@@ -8,11 +8,15 @@ import { sendOrgDigestToMembers } from '../services/digest-generator';
  * that org's member emails rather than `newsletterSubscribers`. Does not
  * modify or call into the public digest job — this is a fully separate path.
  */
-export async function runOrgDigestJob(organizationId: string, daoSlug: string) {
+export async function runOrgDigestJob(
+  organizationId: string,
+  daoSlug: string,
+  opts: { force?: boolean } = {},
+) {
   const t = Date.now();
-  const result = await sendOrgDigestToMembers(organizationId, daoSlug);
+  const result = await sendOrgDigestToMembers(organizationId, daoSlug, opts);
   console.log(
-    `[send-org-digest] org=${organizationId} dao=${daoSlug} sent=${result.sent} dryRun=${result.dryRun} (${Date.now() - t}ms)`,
+    `[send-org-digest] org=${organizationId} dao=${daoSlug} sent=${result.sent} skipped=${result.skipped} dryRun=${result.dryRun} (${Date.now() - t}ms)`,
   );
   return result;
 }
