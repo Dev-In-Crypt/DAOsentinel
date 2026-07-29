@@ -9,7 +9,7 @@
     "typecheck": "tsc --noEmit",
     "db:generate": "drizzle-kit generate",
     "db:push": "drizzle-kit push",
-    "db:migrate": "tsx src/server/db/migrate.ts",
+    "db:migrate": "tsx -r dotenv/config src/server/db/migrate.ts",
     "db:seed": "tsx src/server/db/seed.ts",
     "test": "vitest run",
     "test:watch": "vitest",
