@@ -34,7 +34,7 @@
 import { and, eq, gt, lte, or, sql } from 'drizzle-orm';
 import { db } from '../../db';
 import { proposals } from '../../db/schema';
-import { QUORUM_RISK_THRESHOLD } from '@/lib/constants';
+import { QUORUM_RISK_THRESHOLD, QUORUM_RISK_WINDOW_ELAPSED } from '@/lib/constants';
 import { formatNumber, formatPct } from '@/lib/utils';
 
 /** Matches the digest's own upcoming limit (gatherDigestData uses 8). */
@@ -49,13 +49,12 @@ const RISK_PCT = Math.round(QUORUM_RISK_THRESHOLD * 100);
  * `if (progress < 0.75) continue; // only alert in final 25%` in
  * scanQuorumRisks.
  *
- * Redeclared here rather than imported because it is a bare literal in
- * whale-detector.ts, not an exported constant, and this task is scoped to two
- * new files (src/lib/constants.ts is off limits). If one moves, move both —
- * the two values disagreeing is exactly the report/alert contradiction this
- * flag exists to avoid. Exported so tests can pin the boundary to it.
+ * Re-exported from src/lib/constants.ts, which both this module and
+ * scanQuorumRisks now import — the two values disagreeing is exactly the
+ * report/alert contradiction this flag exists to avoid. Re-exported (rather
+ * than only imported) so tests can pin the boundary to it directly.
  */
-export const QUORUM_RISK_WINDOW_ELAPSED = 0.75;
+export { QUORUM_RISK_WINDOW_ELAPSED };
 
 /** `QUORUM_RISK_WINDOW_ELAPSED` as the remaining share, e.g. 25 for 0.75. */
 const RISK_WINDOW_REMAINING_PCT = Math.round((1 - QUORUM_RISK_WINDOW_ELAPSED) * 100);

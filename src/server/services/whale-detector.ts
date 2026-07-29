@@ -6,6 +6,7 @@ import {
   WHALE_CRITICAL_PCT,
   WHALE_WARNING_PCT,
   QUORUM_RISK_THRESHOLD,
+  QUORUM_RISK_WINDOW_ELAPSED,
 } from '@/lib/constants';
 import { shortenAddress, formatNumber } from '@/lib/utils';
 import { publishAlert } from './notifier';
@@ -177,7 +178,10 @@ async function scanQuorumRisks(): Promise<number> {
     const dur = end - start;
     if (dur <= 0) continue;
     const progress = (now - start) / dur;
-    if (progress < 0.75) continue; // only alert in final 25%
+    // Only alert in the final stretch. The paid org report's upcoming section
+    // gates its "quorum at risk" flag on the same constant, so the two can't
+    // contradict each other for the same proposal.
+    if (progress < QUORUM_RISK_WINDOW_ELAPSED) continue;
 
     // Dedup
     const [dup] = await db

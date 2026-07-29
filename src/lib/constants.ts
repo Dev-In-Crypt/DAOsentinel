@@ -4,6 +4,11 @@ export const WHALE_CRITICAL_PCT = 20;
 export const WHALE_WARNING_PCT = 10;
 export const LAST_MINUTE_WINDOW_PCT = 0.1; // final 10% of voting window
 export const QUORUM_RISK_THRESHOLD = 0.8; // alert when active proposal is in final stretch with < 80% quorum
+// Share of the voting window that must have elapsed before short-of-quorum
+// counts as "at risk" rather than "too early to call". Both the quorum_risk
+// detector and the paid org report's upcoming section gate on this, and they
+// MUST agree — otherwise one surface flags a proposal the other calls fine.
+export const QUORUM_RISK_WINDOW_ELAPSED = 0.75;
 export const SCORE_DROP_ALERT = 5; // Democracy Score drop > 5 points triggers an alert
 export const COORDINATED_VOTING_MIN = 3; // 3+ addresses with shared funder
 export const SUMMARY_BODY_TRUNCATE = 3000;
