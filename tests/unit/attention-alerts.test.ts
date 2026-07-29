@@ -5,6 +5,7 @@ import {
   formatAttentionAlertsSection,
   ATTENTION_ALERT_TYPES,
   ACTIONABLE_SEVERITIES,
+  MAX_WHALE_ALERTS_PER_PROPOSAL,
   type AttentionAlertRow,
 } from '@/server/services/org-report/attention-alerts';
 
@@ -386,9 +387,13 @@ describe('formatAttentionAlertsSection', () => {
     expect(md).toContain('- 🔴 **🐳 Whale vote on Uniswap: 23.4% VP** — _Raise treasury allocation_');
     expect(md).toContain('- 🟠 **⚠ Quorum risk: Raise treasury allocation**');
     expect(md).toContain('  - **What happened:**');
-    expect(md).toContain('  - **Why it matters:**');
     expect(md).toContain('  - **Who:**');
     expect(md).toContain('  - **Deadline:** 2026-08-01');
+    // "Why it matters" is per TYPE, not per alert (TODO-075) — it is the group
+    // preamble now, which is why it no longer carries the two-space item indent.
+    expect(md).toContain('### Whale votes (1)');
+    expect(md).toContain('### Quorum at risk (1)');
+    expect(md).not.toContain('  - **Why it matters:**');
   });
 
   it('omits the deadline line entirely for DAO-level alerts', () => {
@@ -436,6 +441,80 @@ describe('formatAttentionAlertsSection', () => {
     const md = formatAttentionAlertsSection(
       describeAlerts(ATTENTION_ALERT_TYPES.map((type, i) => row({ id: type, type, data: null, createdAt: new Date(2026, 6, 20 - i) }))),
     );
-    expect(md.match(/ {2}- \*\*Why it matters:\*\*/g)).toHaveLength(5);
+    // One group per type, each with exactly one "why it matters" preamble.
+    expect(md.match(/^### /gm)).toHaveLength(5);
+  });
+});
+
+describe('clone collapsing (TODO-075)', () => {
+  // The real shape that produced the complaint: Aavegotchi publishes one
+  // SIGPROP as several clones with different voting windows, so one whale's
+  // one decision arrived as four separate alert rows on four separate
+  // proposal ids.
+  const CLONES = [
+    'DAO Governance Evolution - [25-day-clone]',
+    'DAO Governance Evolution - [32-day-clone]',
+    'DAO Governance Evolution - [11-day-clone]',
+    'DAO Governance Evolution',
+  ];
+
+  function whaleOnClone(title: string, voter: string, i: number): AttentionAlertRow {
+    return row({
+      id: `${voter}-${i}`,
+      type: 'whale_vote',
+      data: { voter, vpPct: 23.1, choice: 1 },
+      proposalTitle: title,
+      proposalId: `p-${i}`,
+      createdAt: new Date(2026, 6, 20 - i),
+    });
+  }
+
+  it('collapses one whale voting the same way across clones into a single item', () => {
+    const out = describeAlerts(CLONES.map((t, i) => whaleOnClone(t, '0xaaa', i)));
+    expect(out).toHaveLength(1);
+    expect(out[0].collapsedCount).toBe(3);
+  });
+
+  it('reports the collapse in the markdown instead of silently dropping it', () => {
+    const md = formatAttentionAlertsSection(
+      describeAlerts(CLONES.map((t, i) => whaleOnClone(t, '0xaaa', i))),
+    );
+    expect(md).toContain('**Also on:** 3 near-identical clones');
+  });
+
+  it('keeps different whales on the same proposal apart', () => {
+    const out = describeAlerts([
+      whaleOnClone(CLONES[0], '0xaaa', 0),
+      whaleOnClone(CLONES[1], '0xbbb', 1),
+    ]);
+    expect(out).toHaveLength(2);
+    expect(out.every((a) => a.collapsedCount === 0)).toBe(true);
+  });
+
+  it('keeps one whale voting DIFFERENTLY on two clones apart', () => {
+    const out = describeAlerts([
+      row({ id: 'x', data: { voter: '0xaaa', choice: 1 }, proposalTitle: CLONES[0], proposalId: 'p1' }),
+      row({ id: 'y', data: { voter: '0xaaa', choice: 2 }, proposalTitle: CLONES[1], proposalId: 'p2' }),
+    ]);
+    expect(out).toHaveLength(2);
+  });
+
+  it('spends the per-proposal cap on distinct whales, not on repeats of one', () => {
+    // Three whales x two clones each. Before the collapse pass the cap was
+    // consumed by clones of the same whale; now it admits two DIFFERENT ones.
+    const rows = ['0xaaa', '0xbbb', '0xccc'].flatMap((v, vi) =>
+      [CLONES[0], CLONES[1]].map((t, ci) => whaleOnClone(t, v, vi * 2 + ci)),
+    );
+    const out = describeAlerts(rows);
+    expect(out).toHaveLength(MAX_WHALE_ALERTS_PER_PROPOSAL);
+    expect(new Set(out.map((a) => a.voter)).size).toBe(MAX_WHALE_ALERTS_PER_PROPOSAL);
+  });
+
+  it('leaves non-whale types untouched', () => {
+    const out = describeAlerts([
+      row({ id: 'q1', type: 'quorum_risk', data: {}, proposalTitle: CLONES[0], proposalId: 'p1' }),
+      row({ id: 'q2', type: 'quorum_risk', data: {}, proposalTitle: CLONES[1], proposalId: 'p2' }),
+    ]);
+    expect(out).toHaveLength(2);
   });
 });

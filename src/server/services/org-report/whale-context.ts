@@ -26,10 +26,11 @@
  * the data and the markdown section.
  */
 
-import { and, desc, eq, gt, inArray } from 'drizzle-orm';
+import { and, desc, eq, gt, inArray, sql } from 'drizzle-orm';
 import { db } from '@/server/db';
 import { alerts, delegateDaoActivity, delegates, proposals } from '@/server/db/schema';
 import { formatNumber, shortenAddress } from '@/lib/utils';
+import { formatIdentity, type AddressIdentity } from './address-identity';
 
 /** Matches the 8-row cap `gatherDigestData` already uses for the whale section. */
 const WHALE_CONTEXT_LIMIT = 8;
@@ -434,7 +435,17 @@ export async function fetchWhaleContext(
     .where(
       and(eq(alerts.daoId, daoId), eq(alerts.type, 'whale_vote'), gt(alerts.createdAt, weekAgo)),
     )
-    .orderBy(desc(alerts.createdAt))
+    // BY SIZE, then by recency. Ordering by `createdAt` alone (as this did
+    // until TODO-075) meant the fetch limit and `thinPerVoter` were spent on
+    // whichever alerts happened to be newest — and on real Aavegotchi data
+    // that filled all eight slots with 3-17% holders while the address holding
+    // 68.2% of a live vote never appeared in the section at all. The largest
+    // holder being absent from the whale section is the worst possible
+    // omission for the one section a customer reads to find exactly that.
+    //
+    // `data->>'vpPct'` is jsonb text; NULLS LAST keeps a malformed payload from
+    // sorting to the top and displacing a real whale.
+    .orderBy(sql`(${alerts.data}->>'vpPct')::numeric DESC NULLS LAST`, desc(alerts.createdAt))
     // Over-fetch, then thin per voter below. Taking the newest N outright
     // reads badly on real data: DAOs that run near-duplicate proposals (e.g.
     // Aavegotchi's "[25-day-clone]"/"[32-day-clone]" pairs of one SIGPROP)
@@ -622,12 +633,59 @@ function formatHeadline(item: WhaleContextItem): string {
  * heading. Leading `\n\n` matches `formatCuratedNotesSection`, which is
  * concatenated onto an existing report body.
  */
-export function formatWhaleContextSection(items: WhaleContextItem[]): string {
+export function formatWhaleContextSection(
+  items: WhaleContextItem[],
+  identities: ReadonlyMap<string, AddressIdentity> = new Map(),
+): string {
   if (items.length === 0) return '';
 
-  const blocks = items
-    .map((item) => [formatHeadline(item), formatIdentityLine(item), formatImpactLine(item)].join('\n'))
-    .join('\n');
+  // Grouped BY ADDRESS, not by vote (TODO-075). One block per vote meant the
+  // same whale's identity line and the same "impact undetermined" verdict were
+  // reprinted for every proposal they touched — and the vote itself is already
+  // spelled out in the alerts section above. What is left here, and only here,
+  // is who the address is and whether their power changed an outcome.
+  const byVoter = new Map<string, WhaleContextItem[]>();
+  for (const item of items) {
+    const key = item.voter?.toLowerCase() ?? `unknown:${item.proposalId ?? ''}`;
+    const bucket = byVoter.get(key);
+    if (bucket) bucket.push(item);
+    else byVoter.set(key, [item]);
+  }
 
-  return `\n\n## 🐳 Whale & delegate context\n${blocks}`;
+  const blocks = [...byVoter.entries()].map(([key, group]) => {
+    const first = group[0]!;
+    const identity = identities.get(key);
+    const who = identity?.label === 'identified_delegate' && identity.sourceDetail
+      ? identity.sourceDetail.replace(/^Publicly identified as /, '')
+      : first.delegate?.displayName ?? (first.voter ? shortenAddress(first.voter) : 'Unknown address');
+
+    const lines = [`- **${who}**`];
+
+    // Identity from the ladder when we have it; the old delegate-only line as
+    // the fallback, so a DAO whose addresses we could not classify still gets
+    // the delegate metrics it used to.
+    lines.push(identity ? `  - ${formatIdentity(identity)}` : formatIdentityLine(first));
+
+    // One line per proposal they moved, carrying only the impact verdict —
+    // the share and the choice are in the alerts section.
+    for (const item of group) {
+      const on = item.proposalTitle ? `"${item.proposalTitle}"` : 'an unnamed proposal';
+      // Same three-way share resolution the old per-vote headline used: prefer
+      // the freshly-derived percentage so everything is measured against one
+      // denominator, fall back to the stored one WITH its caveat, and say so
+      // plainly when neither exists. Dropping the fallback would silently hide
+      // the size of a whale whose proposal has unusable scores.
+      const share =
+        item.vpPctOfScores !== null
+          ? ` (${item.vpPctOfScores.toFixed(1)}% of votes cast)`
+          : item.vpPctAtAlert !== null
+            ? ` (${item.vpPctAtAlert.toFixed(1)}% of total voting power (as recorded when the alert fired))`
+            : ' (an unrecorded share of voting power)';
+      lines.push(`  - On ${on}${share}: ${formatImpactLine(item).replace(/^ {2}- /, '')}`);
+    }
+
+    return lines.join('\n');
+  });
+
+  return `\n\n## 🐳 Whale & delegate context\n${blocks.join('\n')}`;
 }

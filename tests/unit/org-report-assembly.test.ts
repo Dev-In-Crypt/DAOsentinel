@@ -37,6 +37,10 @@ const BUSY_ALERTS: AttentionAlert[] = [
     deadline: DEADLINE,
     proposalTitle: 'Fee switch activation',
     createdAt: new Date('2026-07-04T10:00:00Z'),
+    voter: '0x123400000000000000000000000000000000cdef',
+    normalizedTitle: 'Fee switch activation',
+    choiceKey: '1',
+    collapsedCount: 0,
   },
   {
     id: 'alert-swing',
@@ -48,6 +52,10 @@ const BUSY_ALERTS: AttentionAlert[] = [
     participants: 'Leading choice flipped from "Against" to "For"',
     deadline: new Date('2026-07-05T00:00:00Z'),
     proposalTitle: 'Grants round 12',
+    voter: null,
+    normalizedTitle: 'Grants round 12',
+    choiceKey: '1',
+    collapsedCount: 0,
     createdAt: new Date('2026-07-05T09:00:00Z'),
   },
 ];
@@ -193,6 +201,7 @@ function busyData(): OrgReportSectionData {
   return {
     organizationDisplayName: 'Acme Governance',
     daoName: 'Uniswap',
+    identities: new Map(),
     weekOf: WEEK_OF,
     summary,
     summaryProse: renderDeterministicSummary(summary),
@@ -218,6 +227,7 @@ function emptyData(): OrgReportSectionData {
   return {
     organizationDisplayName: 'Acme Governance',
     daoName: 'Uniswap',
+    identities: new Map(),
     weekOf: WEEK_OF,
     summary,
     summaryProse: renderDeterministicSummary(summary),
@@ -335,7 +345,8 @@ describe('composeOrgReportBody — title duplication', () => {
     expect(withTitle).toContain(`# ${title}`);
     expect(withoutTitle).not.toContain(title);
     expect(withoutTitle.split('\n').filter((l) => l.startsWith('# '))).toHaveLength(0);
-    expect(withoutTitle.startsWith('## 🧭 Executive summary')).toBe(true);
+    // The at-a-glance table now leads the document (TODO-076).
+    expect(withoutTitle.startsWith('## ⚡ At a glance')).toBe(true);
   });
 
   it('never repeats "governance report — week of" anywhere in the body', () => {

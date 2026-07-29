@@ -32,8 +32,9 @@
  * digest-generator.ts.
  */
 
-import { METRIC_HINT, METRIC_LABEL } from '@/lib/constants';
+import { METRIC_HINT, METRIC_LABEL, WHALE_CRITICAL_PCT } from '@/lib/constants';
 import { formatNumber, formatPct, shortenAddress } from '@/lib/utils';
+import type { AddressIdentity } from './address-identity';
 import type { AttentionAlert } from './attention-alerts';
 import type { MetricContribution, ScoreAttribution, ScoreMetric } from './score-attribution';
 import type { UpcomingProposalItem } from './upcoming-quorum';
@@ -55,6 +56,8 @@ export const RECOMMENDATION_RULES = [
   'quorum_push',
   'contact_decisive_delegate',
   'identify_decisive_whale',
+  'concentration_risk',
+  'identify_top_holder',
   'investigate_coordination',
   'prepare_swing_comms',
   'confirm_quorum_manually',
@@ -93,7 +96,33 @@ export interface Recommendation {
   evidence: string;
   /** The deadline that makes it urgent; null when the item is not time-boxed. */
   deadline: Date | null;
+  /**
+   * Which function should pick this up. A ROLE, never a person: we hold no
+   * roster of the customer's team, and inventing an assignee would be a
+   * fabricated fact in a document whose whole value is that it contains none.
+   */
+  owner: RecommendationOwner;
+  /** Two or three words naming the problem, for the at-a-glance table. */
+  riskLabel: string;
+  /** The affected proposal (or DAO-level scope), for the at-a-glance table. */
+  subjectLabel: string;
 }
+
+export const RECOMMENDATION_OWNERS = [
+  'delegate_relations',
+  'governance_lead',
+  'treasury_ops',
+  'research',
+] as const;
+
+export type RecommendationOwner = (typeof RECOMMENDATION_OWNERS)[number];
+
+export const OWNER_LABEL: Record<RecommendationOwner, string> = {
+  delegate_relations: 'Delegate relations',
+  governance_lead: 'Governance lead',
+  treasury_ops: 'Treasury / ops',
+  research: 'Research',
+};
 
 /**
  * The four batch-1 outputs. All optional so a caller that hasn't wired a
@@ -105,7 +134,21 @@ export interface RecommendationInput {
   whales?: readonly WhaleContextItem[];
   alerts?: readonly AttentionAlert[];
   attribution?: ScoreAttribution | null;
+  /** Lowercased address -> identity (TODO-074). Absent entries read as unidentified. */
+  identities?: ReadonlyMap<string, AddressIdentity>;
 }
+
+/**
+ * Concentration that warrants an action on its own, independent of whether the
+ * outcome would flip.
+ *
+ * Deliberately NOT a new number: it is `WHALE_CRITICAL_PCT`, the threshold the
+ * whale detector already uses to mark an alert `critical`. Inventing a second
+ * threshold here would let the report call a vote critical in the alerts
+ * section and simultaneously decide it needs no action — which is exactly the
+ * contradiction a customer would (rightly) not forgive.
+ */
+export const CONCENTRATION_THRESHOLD_PCT = WHALE_CRITICAL_PCT;
 
 // ---------------------------------------------------------------------------
 // Tunables
@@ -231,6 +274,9 @@ function ruleQuorumPush(open: readonly Extract<UpcomingProposalItem, { phase: 'o
     const shortfall = Math.max(item.quorum.quorum - item.quorum.scoresTotal, 0);
     out.push({
       ruleId: 'quorum_push',
+      owner: 'delegate_relations',
+      riskLabel: 'Quorum at risk',
+      subjectLabel: item.title,
       subject: item.id,
       priority: 'high',
       action: `Push turnout on "${item.title}" before it closes — it needs about ${formatNumber(shortfall)} more votes to reach quorum.`,
@@ -261,6 +307,9 @@ function ruleConfirmQuorumManually(
     if (item.endTimestamp.getTime() > horizon) continue;
     out.push({
       ruleId: 'confirm_quorum_manually',
+      owner: 'governance_lead',
+      riskLabel: 'Quorum unknown',
+      subjectLabel: item.title,
       subject: item.id,
       priority: 'medium',
       action: `Confirm the quorum requirement for "${item.title}" directly from the Governor contract — this report cannot tell you whether it is on track.`,
@@ -304,6 +353,9 @@ function ruleQuorumThresholdReview(
   return [
     {
       ruleId: 'review_quorum_threshold',
+      owner: 'governance_lead',
+      riskLabel: 'Quorum threshold too high',
+      subjectLabel: `${atRisk.length} proposals this week`,
       subject: 'quorum_threshold',
       priority: 'low',
       action:
@@ -356,6 +408,9 @@ function ruleDecisiveWhales(
     if (item.delegate) {
       out.push({
         ruleId: 'contact_decisive_delegate',
+        owner: 'delegate_relations',
+        riskLabel: 'One delegate deciding the outcome',
+        subjectLabel: proposal,
         subject: `${item.proposalId ?? proposal}:${item.delegate.address}`,
         priority: 'high',
         action: `Contact ${who} about "${proposal}"${by} — their vote alone is currently deciding the outcome.`,
@@ -365,6 +420,9 @@ function ruleDecisiveWhales(
     } else {
       out.push({
         ruleId: 'identify_decisive_whale',
+        owner: 'research',
+        riskLabel: 'Unnamed address deciding the outcome',
+        subjectLabel: proposal,
         subject: `${item.proposalId ?? proposal}:${item.voter ?? 'unknown'}`,
         priority: 'medium',
         action: `Identify ${who} on "${proposal}"${by} — you cannot engage a counterparty you cannot name.`,
@@ -375,6 +433,178 @@ function ruleDecisiveWhales(
   }
 
   return out;
+}
+
+/**
+ * RULE `concentration_risk` — one address holds a decisive-sized share of a
+ * still-open vote, whether or not the counterfactual test can run.
+ *
+ * This is the rule the report was missing, and its absence was not a gap in
+ * coverage but a dead end in the logic: `contact_decisive_delegate` and
+ * `identify_decisive_whale` both require `decisiveness.status === 'decisive'`,
+ * and `assessDecisiveness` returns `indeterminate` for every `weighted`
+ * proposal because subtracting one voter's power from a single choice is not
+ * meaningful there. On a weighted-voting DAO those two rules therefore could
+ * never fire — an address casting 68.5% of a live vote produced no
+ * recommendation at all, and the report fell through to "review this week
+ * manually".
+ *
+ * Concentration needs no counterfactual: a quarter of a vote in one hand is a
+ * fact about who decides this proposal, and it is actionable on its own.
+ *
+ * The action is written from the address's identity (TODO-074), because "find
+ * out who this is" and "confirm this is intended policy" are different jobs
+ * for different people. An unidentified address is research; a DAO-controlled
+ * one is a governance question; a named delegate is a phone call.
+ */
+function ruleConcentration(
+  whales: readonly WhaleContextItem[],
+  deadlineByProposal: ReadonlyMap<string, Date>,
+  identities: ReadonlyMap<string, AddressIdentity>,
+  skipSubjects: ReadonlySet<string>,
+): Recommendation[] {
+  const out: Recommendation[] = [];
+
+  for (const item of whales) {
+    if (item.proposalState !== 'active') continue;
+
+    // Two different denominators exist: `vpPctOfScores` is the share of votes
+    // actually cast (derived fresh), `vpPctAtAlert` is the share of total
+    // voting power recorded when the alert fired — and the latter is what the
+    // detector thresholds on. Prefer the fresh one, fall back to the recorded
+    // one, and say which is which so the number can be checked.
+    const share = item.vpPctOfScores ?? item.vpPctAtAlert;
+    if (share === null || share < CONCENTRATION_THRESHOLD_PCT) continue;
+    const denominator =
+      item.vpPctOfScores !== null ? 'of the votes cast' : 'of total voting power';
+
+    const voter = item.voter?.toLowerCase() ?? null;
+    const subject = `${item.proposalId ?? item.proposalTitle ?? 'proposal'}:${voter ?? 'unknown'}`;
+    // A decisive rule already covers this exact pair with a stronger claim.
+    if (skipSubjects.has(subject.toLowerCase())) continue;
+
+    const proposal = item.proposalTitle ?? 'an active proposal';
+    const deadline = item.proposalId ? deadlineByProposal.get(item.proposalId) ?? null : null;
+    const by = deadline ? ` before it closes ${isoDay(deadline)}` : ' before voting closes';
+    const pct = `${share.toFixed(1)}%`;
+    const addr = voter ? shortenAddress(voter) : 'this address';
+
+    const identity = voter ? identities.get(voter) : undefined;
+    const label = identity?.label ?? 'unidentified';
+
+    let action: string;
+    let owner: RecommendationOwner;
+    let priority: RecommendationPriority;
+
+    switch (label) {
+      case 'dao_treasury':
+      case 'dao_controlled':
+        action = `Confirm that ${addr} — an address the DAO declares as its own — voting ${pct} of "${proposal}" is intended policy rather than an operational default${by}.`;
+        owner = 'governance_lead';
+        priority = 'high';
+        break;
+      case 'identified_delegate':
+        action = `Contact ${identity?.sourceDetail?.replace(/^Publicly identified as /, '') ?? addr} about "${proposal}"${by} — they are carrying ${pct} of the votes cast.`;
+        owner = 'delegate_relations';
+        priority = 'high';
+        break;
+      case 'multisig':
+        action = `Reach the signers behind ${addr} (${identity?.threshold ?? '?'}-of-${identity?.signerCount ?? '?'} multisig) about "${proposal}"${by} — ${pct} of this vote is controlled by that group, not by one person.`;
+        owner = 'delegate_relations';
+        priority = 'high';
+        break;
+      case 'contract':
+        action = `Establish what controls the contract at ${addr} before "${proposal}" closes${by} — it holds ${pct} of the votes cast and there is no owner to contact directly.`;
+        owner = 'research';
+        priority = 'medium';
+        break;
+      default:
+        // The wording the customer asked for, verbatim in shape: name the
+        // address, ask whether it is theirs, ask whether the share is expected.
+        action = `Identify whether ${addr} is a known foundation- or treasury-controlled address, and confirm whether its ${pct} share of "${proposal}" is expected${by}.`;
+        owner = 'research';
+        priority = 'high';
+        break;
+    }
+
+    out.push({
+      ruleId: 'concentration_risk',
+      subject,
+      priority,
+      action,
+      evidence: `${addr} cast ${pct} ${denominator} on "${proposal}". Identity: ${identity?.sourceDetail ?? 'no public identity, and not among the addresses the DAO declares as its own'}. Outcome impact could not be tested here${item.decisiveness.status === 'indeterminate' ? ` (${item.decisiveness.reason.replace(/_/g, ' ')})` : ''}, so this is a statement about concentration, not about the result.`,
+      deadline,
+      owner,
+      riskLabel: `${pct} of one vote in a single address`,
+      subjectLabel: proposal,
+    });
+  }
+
+  return out;
+}
+
+/**
+ * RULE `identify_top_holder` — the fallback that fires INSTEAD of
+ * "review this week manually" when concentration is real but sub-threshold.
+ *
+ * The case this exists for, seen on live data: an address holds 19.8% of a
+ * live vote — a fifth of the outcome, and a hair under
+ * `CONCENTRATION_THRESHOLD_PCT` — while weighted voting makes the
+ * decisiveness test inapplicable. Every rule declines, and the report used to
+ * answer "review this week manually", which is honest and close to worthless.
+ *
+ * Resisting the temptation to lower the threshold until this fires is the
+ * whole point: a threshold tuned until the output looks good is not a
+ * threshold. The right answer is that "no rule matched" should still name the
+ * largest holder and ask the one question that is always worth asking.
+ *
+ * Only ever fires when nothing else did, and only for a still-open vote.
+ */
+function ruleIdentifyTopHolder(
+  whales: readonly WhaleContextItem[],
+  deadlineByProposal: ReadonlyMap<string, Date>,
+  identities: ReadonlyMap<string, AddressIdentity>,
+): Recommendation[] {
+  const open = whales.filter((w) => w.proposalState === 'active');
+  if (open.length === 0) return [];
+
+  const shareOf = (w: WhaleContextItem) => w.vpPctOfScores ?? w.vpPctAtAlert ?? 0;
+  const top = open.reduce((best, w) => (shareOf(w) > shareOf(best) ? w : best), open[0]!);
+
+  const share = shareOf(top);
+  if (share <= 0) return [];
+
+  const voter = top.voter?.toLowerCase() ?? null;
+  const addr = voter ? shortenAddress(voter) : 'the largest holder';
+  const proposal = top.proposalTitle ?? 'an active proposal';
+  const deadline = top.proposalId ? deadlineByProposal.get(top.proposalId) ?? null : null;
+  const identity = voter ? identities.get(voter) : undefined;
+  const pct = `${share.toFixed(1)}%`;
+  const denominator = top.vpPctOfScores !== null ? 'of the votes cast' : 'of total voting power';
+
+  // `recurring_participant` is NOT an identification — its own evidence line
+  // says "no public identity". Treating it as known flipped the wording to
+  // "confirm this is expected" for an address nobody can name, which is the
+  // opposite of the action needed.
+  const IDENTIFYING = new Set(['dao_treasury', 'dao_controlled', 'identified_delegate', 'multisig']);
+  const known = identity !== undefined && IDENTIFYING.has(identity.label);
+  const action = known
+    ? `Confirm whether ${addr} holding ${pct} ${denominator} on "${proposal}" is expected — ${identity?.sourceDetail ?? ''}`.trim()
+    : `Identify whether ${addr} is a known foundation- or treasury-controlled address, and confirm whether its ${pct} share ${denominator} of "${proposal}" is expected.`;
+
+  return [
+    {
+      ruleId: 'identify_top_holder',
+      subject: `${top.proposalId ?? proposal}:${voter ?? 'unknown'}`,
+      priority: 'medium',
+      action,
+      evidence: `Largest single holder on a still-open vote this week. ${addr} cast ${pct} ${denominator} on "${proposal}". Identity: ${identity?.sourceDetail ?? 'no public identity, and not among the addresses the DAO declares as its own'}. No other rule matched — the outcome-impact test could not run under this DAO's voting type, and no open vote is short of quorum in its final stretch.`,
+      deadline,
+      owner: known ? 'governance_lead' : 'research',
+      riskLabel: `Largest holder: ${pct} ${denominator}`,
+      subjectLabel: proposal,
+    },
+  ];
 }
 
 /**
@@ -396,6 +626,9 @@ function ruleAlertDriven(alerts: readonly AttentionAlert[]): Recommendation[] {
     if (alert.type === 'last_minute_swing') {
       out.push({
         ruleId: 'prepare_swing_comms',
+        owner: 'governance_lead',
+        riskLabel: 'Late swing in the result',
+        subjectLabel: alert.proposalTitle ?? 'the flagged proposal',
         subject: alert.proposalTitle ?? alert.id,
         priority: 'medium',
         action: `Prepare a short note on ${on} — the outcome changed late in the voting window, and people who stopped watching will ask why.`,
@@ -408,6 +641,9 @@ function ruleAlertDriven(alerts: readonly AttentionAlert[]): Recommendation[] {
     if (alert.type === 'coordinated_voting') {
       out.push({
         ruleId: 'investigate_coordination',
+        owner: 'research',
+        riskLabel: 'Possible coordinated voting',
+        subjectLabel: alert.proposalTitle ?? 'the flagged proposal',
         subject: alert.proposalTitle ?? alert.id,
         priority: alert.severity === 'critical' ? 'high' : 'medium',
         action: `Review the co-funded addresses on ${on} before treating their votes as independent support.`,
@@ -448,6 +684,9 @@ function ruleScoreMetrics(attribution: ScoreAttribution | null | undefined): Rec
 
     return {
       ruleId: 'review_score_metric' as const,
+      owner: 'governance_lead' as const,
+      riskLabel: `${label} fell`,
+      subjectLabel: 'Democracy Score (DAO-wide)',
       subject: d.metric,
       priority: 'medium' as const,
       action: METRIC_ACTION[d.metric],
@@ -493,6 +732,9 @@ function noActionNeeded(input: RecommendationInput, now: Date): Recommendation {
         : `${plural(alerts, 'alert', 'alerts')} fired`;
     return {
       ruleId: 'no_action_needed',
+      owner: 'governance_lead',
+      riskLabel: 'Flagged activity, no rule matched',
+      subjectLabel: 'This week',
       subject: 'week',
       priority: 'medium',
       action:
@@ -504,6 +746,9 @@ function noActionNeeded(input: RecommendationInput, now: Date): Recommendation {
 
   return {
     ruleId: 'no_action_needed',
+    owner: 'governance_lead',
+    riskLabel: 'No risks detected',
+    subjectLabel: 'This week',
     subject: 'week',
     priority: 'low',
     action:
@@ -603,16 +848,42 @@ export function buildRecommendations(input: RecommendationInput, now: Date): Rec
   // whale on a closed proposal cannot pick up a deadline by accident.
   const deadlineByProposal = new Map<string, Date>(open.map((i) => [i.id, i.endTimestamp]));
 
+  // Decisive first: where the counterfactual test CAN run it makes the
+  // stronger claim ("removing this vote flips the winner"), so concentration
+  // stands down for those exact (proposal, address) pairs rather than saying a
+  // weaker version of the same thing twice.
+  const decisive = ruleDecisiveWhales(input.whales ?? [], deadlineByProposal);
+  // Lowercased on both sides: the decisive rules key on
+  // `delegate.address` while concentration keys on `voter`, and those are the
+  // same address arriving from two tables that disagree about casing.
+  const decisiveSubjects = new Set(decisive.map((r) => r.subject.toLowerCase()));
+
   const generated: Recommendation[] = [
     ...ruleQuorumPush(open),
     ...ruleConfirmQuorumManually(open, now),
     ...ruleQuorumThresholdReview(open),
-    ...ruleDecisiveWhales(input.whales ?? [], deadlineByProposal),
+    ...decisive,
+    ...ruleConcentration(
+      input.whales ?? [],
+      deadlineByProposal,
+      input.identities ?? new Map(),
+      decisiveSubjects,
+    ),
     ...ruleAlertDriven(input.alerts ?? []),
     ...ruleScoreMetrics(input.attribution),
   ];
 
-  if (generated.length === 0) return [noActionNeeded(input, now)];
+  if (generated.length === 0) {
+    // Before falling back to "nothing matched", try the one question that is
+    // always answerable when a whale sat on a live vote this week.
+    const fallback = ruleIdentifyTopHolder(
+      input.whales ?? [],
+      deadlineByProposal,
+      input.identities ?? new Map(),
+    );
+    if (fallback.length > 0) return fallback;
+    return [noActionNeeded(input, now)];
+  }
 
   return applyCap(dedupe([...generated].sort(compareRecommendations)));
 }

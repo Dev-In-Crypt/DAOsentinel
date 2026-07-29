@@ -33,6 +33,7 @@ import {
   formatUnresolvedNotesNotice,
   type ResolvedOrgNote,
 } from '../../api/org-notes';
+import { fetchAddressIdentities, type AddressIdentity } from './address-identity';
 import {
   describeAlerts,
   fetchAttentionAlerts,
@@ -41,6 +42,7 @@ import {
 } from './attention-alerts';
 import {
   buildExecutiveSummary,
+  formatAtAGlanceSection,
   formatExecutiveSummarySection,
   writeExecutiveSummaryProse,
   MATERIAL_SCORE_DROP,
@@ -85,6 +87,10 @@ export interface OrgReportDao {
   id: string;
   name: string;
   slug: string;
+  /** Which EVM network to ask about this DAO's addresses. Null for DAOs we never resolved one for. */
+  chain: string | null;
+  /** The Snapshot space, whose own admin/treasury lists identify DAO-controlled addresses. */
+  snapshotSpaceId: string | null;
 }
 
 export interface GenerateOrgReportOptions {
@@ -129,6 +135,8 @@ export interface OrgReportSectionData {
   staleActiveCount: number;
   whales: readonly WhaleContextItem[];
   attribution: ScoreAttribution | null;
+  /** Lowercased address -> identity (TODO-074). Empty map when nothing resolved. */
+  identities: ReadonlyMap<string, AddressIdentity>;
   notes: readonly ResolvedOrgNote[];
   unresolvedNotesCount: number;
 }
@@ -253,11 +261,15 @@ export function composeOrgReportBody(
 
   const body = [
     title,
+    // The table comes first (TODO-076): risk, what it affects, by when, whose
+    // job, what to do. Everything below it is the supporting detail for these
+    // rows, which is the order a reader with five minutes needs.
+    formatAtAGlanceSection(data.summary, data.recommendations),
     formatExecutiveSummarySection(data.summary, data.summaryProse),
     formatRecommendationsSection(data.recommendations),
     formatAttentionAlertsSection([...data.alerts]),
     formatUpcomingSection([...data.upcoming], data.staleActiveCount),
-    formatWhaleContextSection([...data.whales]),
+    formatWhaleContextSection([...data.whales], data.identities),
     data.attribution ? formatScoreAttributionSection(data.attribution) : '',
     formatConciergeNotesSection(
       data.notes,
@@ -300,7 +312,13 @@ export async function loadOrganization(organizationId: string): Promise<OrgRepor
 /** Exported for ./store.ts — see `loadOrganization`. */
 export async function loadDao(daoSlug: string): Promise<OrgReportDao> {
   const [row] = await db
-    .select({ id: daos.id, name: daos.name, slug: daos.slug })
+    .select({
+      id: daos.id,
+      name: daos.name,
+      slug: daos.slug,
+      chain: daos.chain,
+      snapshotSpaceId: daos.snapshotSpaceId,
+    })
     .from(daos)
     .where(eq(daos.slug, daoSlug))
     .limit(1);
@@ -339,7 +357,26 @@ export async function generateOrgReport(
   ]);
 
   const alerts = describeAlerts(alertRows);
-  const recommendations = buildRecommendations({ upcoming, whales, alerts, attribution }, weekOf);
+
+  // Identity lookup runs after the alerts/whales fetch because it needs the
+  // addresses those produced, and before the recommendations because the
+  // wording of `concentration_risk` depends on what each address turns out to
+  // be. Failures inside it degrade to `unidentified`, never throw.
+  const whaleAddresses = whales
+    .map((w) => w.voter)
+    .filter((v): v is string => typeof v === 'string' && v !== '');
+  const identities = await fetchAddressIdentities(
+    dao.id,
+    dao.chain,
+    dao.snapshotSpaceId,
+    whaleAddresses,
+    weekOf,
+  );
+
+  const recommendations = buildRecommendations(
+    { upcoming, whales, alerts, attribution, identities },
+    weekOf,
+  );
 
   const summary = buildExecutiveSummary({
     organizationName: organization.displayName,
@@ -356,6 +393,7 @@ export async function generateOrgReport(
   const data: OrgReportSectionData = {
     organizationDisplayName: organization.displayName,
     daoName: dao.name,
+    identities,
     weekOf,
     summary,
     summaryProse,

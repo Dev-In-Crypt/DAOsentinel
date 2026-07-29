@@ -1,7 +1,9 @@
 import { describe, it, expect } from 'vitest';
 import {
+  CONCENTRATION_THRESHOLD_PCT,
   MATERIAL_NEGATIVE_CONTRIBUTION,
   RECOMMENDATION_LIMIT,
+  RECOMMENDATION_OWNERS,
   buildRecommendations,
   formatRecommendationsSection,
   type Recommendation,
@@ -137,6 +139,10 @@ function alert(overrides: Partial<AttentionAlert> = {}): AttentionAlert {
     whatHappened: 'The leading choice changed in the final hours of voting.',
     whyItMatters: 'Late flips produce outcomes the community did not expect.',
     participants: 'Leading choice flipped from "For" to "Against"',
+    voter: null,
+    normalizedTitle: 'Fee switch activation',
+    choiceKey: '1',
+    collapsedCount: 0,
     deadline: IN_3_DAYS,
     proposalTitle: 'Fee switch activation',
     createdAt: YESTERDAY,
@@ -312,18 +318,27 @@ describe('rules: decisive whales', () => {
     expect(recs[0].evidence).toContain('No delegate profile exists');
   });
 
-  it('stays quiet for a not-decisive whale, an indeterminate verdict, or a closed proposal', () => {
+  it('emits no DECISIVE rule for a not-decisive whale or an indeterminate verdict', () => {
     const cases: WhaleContextItem[][] = [
       [whale({ decisiveness: NOT_DECISIVE })],
       [whale({ decisiveness: { status: 'indeterminate', reason: 'missing_scores' } })],
-      [whale({ proposalState: 'closed' })],
     ];
 
     for (const whales of cases) {
-      expect(ruleIds(buildRecommendations({ upcoming: [openItem()], whales }, NOW))).toEqual([
-        'no_action_needed',
-      ]);
+      const ids = ruleIds(buildRecommendations({ upcoming: [openItem()], whales }, NOW));
+      expect(ids).not.toContain('contact_decisive_delegate');
+      expect(ids).not.toContain('identify_decisive_whale');
+      // TODO-077: the vote is still OPEN and one address is still the largest
+      // holder on it, so the report names them instead of saying nothing.
+      expect(ids).toEqual(['identify_top_holder']);
     }
+  });
+
+  it('falls through to no_action_needed once the vote has closed', () => {
+    const ids = ruleIds(
+      buildRecommendations({ upcoming: [openItem()], whales: [whale({ proposalState: 'closed' })] }, NOW),
+    );
+    expect(ids).toEqual(['no_action_needed']);
   });
 
   it('leaves the deadline null when the proposal is not in the open-votes list', () => {
@@ -669,7 +684,8 @@ describe('no_action_needed', () => {
     const recs = buildRecommendations(
       {
         upcoming: [openItem(), openItem({ id: 'p2' })],
-        whales: [whale({ decisiveness: NOT_DECISIVE })],
+        // Closed, so `identify_top_holder` declines and the fallback is reached.
+        whales: [whale({ decisiveness: NOT_DECISIVE, proposalState: 'closed' })],
         alerts: [alert({ type: 'whale_vote' })],
         attribution: attributed([driver('participation', 1)]),
       },
@@ -725,5 +741,127 @@ describe('formatRecommendationsSection', () => {
     const recs = buildRecommendations(busyWeek(), NOW);
     const md = formatRecommendationsSection(recs);
     expect(md.split('  - **Trigger:**').length - 1).toBe(recs.length);
+  });
+});
+
+describe('concentration_risk (TODO-077)', () => {
+  // The bug this rule exists for. `assessDecisiveness` returns `indeterminate`
+  // for every `weighted` proposal, and both whale rules require `decisive` —
+  // so on a weighted-voting DAO an address holding 68.5% of a live vote
+  // produced NO recommendation and the report fell through to
+  // "review this week manually". Verified on real Aavegotchi data.
+  const WEIGHTED_INDETERMINATE = {
+    status: 'indeterminate' as const,
+    reason: 'unsupported_voting_type' as const,
+    votingType: 'weighted',
+  };
+
+  function heavyWeightedWhale(over: Partial<WhaleContextItem> = {}): WhaleContextItem {
+    return whale({
+      votingType: 'weighted',
+      decisiveness: WEIGHTED_INDETERMINATE,
+      vpPctOfScores: 68.5,
+      delegate: null,
+      ...over,
+    });
+  }
+
+  function identityMap(label: string, extra: Record<string, unknown> = {}) {
+    return new Map([
+      [
+        '0xaaaabbbbccccddddeeeeffff0000111122223333',
+        {
+          address: '0xaaaabbbbccccddddeeeeffff0000111122223333',
+          label,
+          source: 'onchain',
+          sourceDetail: 'detail',
+          signerCount: null,
+          threshold: null,
+          onChainUnavailable: false,
+          ...extra,
+        },
+      ],
+    ]) as never;
+  }
+
+  it('fires on a weighted proposal where the decisive test cannot run', () => {
+    const out = buildRecommendations(
+      { whales: [heavyWeightedWhale()], upcoming: [openItem({ id: 'p1' })] },
+      NOW,
+    );
+    const rec = out.find((r) => r.ruleId === 'concentration_risk');
+    expect(rec).toBeDefined();
+    expect(out.some((r) => r.ruleId === 'no_action_needed')).toBe(false);
+  });
+
+  it('asks the customer’s question verbatim for an unidentified address', () => {
+    const out = buildRecommendations({ whales: [heavyWeightedWhale()] }, NOW);
+    const rec = out.find((r) => r.ruleId === 'concentration_risk');
+    expect(rec?.action).toContain('Identify whether');
+    expect(rec?.action).toContain('foundation');
+    expect(rec?.action).toContain('68.5%');
+    expect(rec?.owner).toBe('research');
+  });
+
+  it('asks a different question when the DAO declares the address as its own', () => {
+    const out = buildRecommendations(
+      { whales: [heavyWeightedWhale()], identities: identityMap('dao_controlled') },
+      NOW,
+    );
+    const rec = out.find((r) => r.ruleId === 'concentration_risk');
+    expect(rec?.action).toContain('intended policy');
+    expect(rec?.action).not.toContain('Identify whether');
+    expect(rec?.owner).toBe('governance_lead');
+  });
+
+  it('routes a multisig to outreach, naming the signer group', () => {
+    const out = buildRecommendations(
+      {
+        whales: [heavyWeightedWhale()],
+        identities: identityMap('multisig', { signerCount: 3, threshold: 2 }),
+      },
+      NOW,
+    );
+    const rec = out.find((r) => r.ruleId === 'concentration_risk');
+    expect(rec?.action).toContain('2-of-3');
+    expect(rec?.owner).toBe('delegate_relations');
+  });
+
+  it('stays silent below the threshold', () => {
+    const out = buildRecommendations(
+      { whales: [heavyWeightedWhale({ vpPctOfScores: CONCENTRATION_THRESHOLD_PCT - 0.1 })] },
+      NOW,
+    );
+    expect(out.some((r) => r.ruleId === 'concentration_risk')).toBe(false);
+  });
+
+  it('ignores closed votes — the outcome is already fixed', () => {
+    const out = buildRecommendations(
+      { whales: [heavyWeightedWhale({ proposalState: 'closed' })] },
+      NOW,
+    );
+    expect(out.some((r) => r.ruleId === 'concentration_risk')).toBe(false);
+  });
+
+  // Where the counterfactual CAN run it makes the stronger claim, so the two
+  // must not both appear for one address on one proposal.
+  it('stands down when a decisive rule already covers the same address', () => {
+    const out = buildRecommendations({ whales: [whale({ vpPctOfScores: 68.5 })] }, NOW);
+    expect(out.some((r) => r.ruleId === 'contact_decisive_delegate')).toBe(true);
+    expect(out.some((r) => r.ruleId === 'concentration_risk')).toBe(false);
+  });
+
+  it('never claims the vote would have flipped', () => {
+    const out = buildRecommendations({ whales: [heavyWeightedWhale()] }, NOW);
+    const rec = out.find((r) => r.ruleId === 'concentration_risk');
+    expect(rec?.evidence).toContain('not about the result');
+    expect(rec?.evidence).not.toContain('flips');
+  });
+
+  it('carries an owner role, never a person', () => {
+    const out = buildRecommendations({ whales: [heavyWeightedWhale()] }, NOW);
+    for (const r of out) {
+      expect(RECOMMENDATION_OWNERS).toContain(r.owner);
+    }
   });
 });

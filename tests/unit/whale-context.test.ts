@@ -488,7 +488,8 @@ describe('formatWhaleContextSection', () => {
     ]);
 
     expect(md).toContain('## 🐳 Whale & delegate context');
-    expect(md).toContain('- **grantsguild.eth** — cast 30.0% of votes cast for "For"');
+    expect(md).toContain('- **grantsguild.eth**');
+    expect(md).toContain('(30.0% of votes cast)');
     expect(md).toContain('Known delegate — Karma 82.5 (rank #14)');
     expect(md).toContain('91% participation');
     expect(md).toContain('340 votes cast');
@@ -525,7 +526,7 @@ describe('formatWhaleContextSection', () => {
 
   it('says plainly that an unknown wallet has no profile, with no blank metrics', () => {
     const md = formatWhaleContextSection([item()]);
-    expect(md).toContain('- **0xabcd…ef01** —');
+    expect(md).toContain('- **0xabcd…ef01**');
     expect(md).toContain("No delegate profile — address not seen in this DAO's delegate set.");
     expect(md).not.toContain('Karma');
     expect(md).not.toContain('participation');
@@ -621,7 +622,8 @@ describe('formatWhaleContextSection', () => {
         decisiveness: { status: 'indeterminate', reason: 'choice_out_of_range' },
       }),
     ]);
-    expect(md).toContain('- **Unknown address** — cast an unrecorded share of voting power');
+    expect(md).toContain('- **Unknown address**');
+    expect(md).toContain('(an unrecorded share of voting power)');
     expect(md).toContain(
       "❔ **Impact undetermined** — the alert's recorded choice doesn't line up with the proposal's choices.",
     );

@@ -509,6 +509,56 @@ export const orgReports = pgTable(
   }),
 );
 
+/**
+ * TODO-074: cached answers to "who is this address?".
+ *
+ * The paid report used to offer exactly two labels — "Known delegate" and
+ * "Recurring voter we track" — so an address casting 68% of a vote read the
+ * same as any other wallet. Answering properly means asking Snapshot (which
+ * addresses the space itself declares as admins/treasuries) and the chain
+ * (is there code here, and does it behave like a multisig), neither of which
+ * should be re-asked on every report render.
+ *
+ * `daoId` is NOT NULL even though a contract's bytecode is a chain-level fact,
+ * not a DAO-level one. A nullable column here would break the uniqueness this
+ * table depends on: Postgres treats NULLs as distinct in a unique index, so
+ * `(NULL, '0xabc')` could be inserted without limit. Re-checking one address
+ * once per DAO is the cheaper mistake.
+ *
+ * `checkedAt` drives the TTL. Space membership changes; deployed bytecode
+ * effectively does not.
+ */
+export const addressLabels = pgTable(
+  'address_labels',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    daoId: uuid('dao_id')
+      .notNull()
+      .references(() => daos.id, { onDelete: 'cascade' }),
+    /** Always lowercase — Snapshot, the chain, and `delegates.address` disagree on casing. */
+    address: text('address').notNull(),
+    /** dao_treasury | dao_controlled | identified_delegate | multisig | contract | recurring_participant | unidentified */
+    label: text('label').notNull(),
+    /** snapshot_space | onchain | delegate_registry | vote_history | none */
+    source: text('source').notNull(),
+    /** The human-readable evidence, e.g. `AavegotchiDAO Treasury (Polygon)`. */
+    sourceDetail: text('source_detail'),
+    /** Multisig owner count, when the contract reported one. */
+    signerCount: integer('signer_count'),
+    /** Signatures required, when the contract exposed a threshold. */
+    threshold: integer('threshold'),
+    checkedAt: timestamp('checked_at', { withTimezone: true }).notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  },
+  (t) => ({
+    daoAddressUniq: uniqueIndex('idx_address_labels_dao_address').on(t.daoId, t.address),
+  }),
+);
+
+export const addressLabelsRelations = relations(addressLabels, ({ one }) => ({
+  dao: one(daos, { fields: [addressLabels.daoId], references: [daos.id] }),
+}));
+
 export const orgReportsRelations = relations(orgReports, ({ one }) => ({
   organization: one(organizations, {
     fields: [orgReports.organizationId],
@@ -547,3 +597,5 @@ export type OrgNote = typeof orgNotes.$inferSelect;
 export type NewOrgNote = typeof orgNotes.$inferInsert;
 export type OrgReportRow = typeof orgReports.$inferSelect;
 export type NewOrgReportRow = typeof orgReports.$inferInsert;
+export type AddressLabelRow = typeof addressLabels.$inferSelect;
+export type NewAddressLabelRow = typeof addressLabels.$inferInsert;

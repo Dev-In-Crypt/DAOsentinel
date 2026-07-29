@@ -32,7 +32,7 @@ import type { AttentionAlert } from './attention-alerts';
 import type { ScoreAttribution } from './score-attribution';
 import type { UpcomingProposalItem } from './upcoming-quorum';
 import type { WhaleContextItem } from './whale-context';
-import type { Recommendation } from './recommendations';
+import { OWNER_LABEL, type Recommendation } from './recommendations';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -164,6 +164,12 @@ export const MATERIAL_SCORE_DROP = -2;
 
 /** How many open votes short of quorum in their final stretch make the week `high`. */
 export const MULTI_QUORUM_AT_RISK_MIN = 2;
+
+/**
+ * How many key events the MODEL is shown. Lower than `KEY_EVENT_LIMIT` on
+ * purpose — see `summaryFacts`.
+ */
+export const PROSE_KEY_EVENT_LIMIT = 2;
 
 /** Ceiling on key events. There is no floor — an empty week emits an empty list. */
 export const KEY_EVENT_LIMIT = 5;
@@ -345,12 +351,20 @@ export function buildRiskDrivers(input: ExecutiveSummaryInput): RiskDriver[] {
 
   const critical = alerts.filter((a) => a.severity === 'critical');
   if (critical.length > 0) {
+    // Counts by type, NOT the titles. Listing every title here (as this did
+    // until TODO-075) reprinted the alerts section verbatim inside the summary
+    // — eight whale-vote headlines, then the same eight again a page later.
+    // The alert titles are one scroll away and carry their own detail.
+    const byType = new Map<string, number>();
+    for (const a of critical) byType.set(a.type, (byType.get(a.type) ?? 0) + 1);
+    const breakdown = [...byType.entries()]
+      .sort(([, a], [, b]) => b - a)
+      .map(([type, n]) => `${n} ${type.replace(/_/g, ' ')}`)
+      .join(', ');
     drivers.push({
       code: 'critical_alert',
       level: 'elevated',
-      detail: `${plural(critical.length, 'critical alert', 'critical alerts')} fired this week: ${critical
-        .map((a) => `"${a.title}"`)
-        .join(', ')}.`,
+      detail: `${plural(critical.length, 'critical alert', 'critical alerts')} fired this week (${breakdown}) — listed in full under "Alerts requiring attention".`,
     });
   }
 
@@ -552,7 +566,15 @@ export function summaryFacts(summary: ExecutiveSummary): ExecutiveSummaryFacts {
     riskLevel: summary.riskLevel,
     riskDrivers: summary.drivers.map((d) => d.detail),
     riskDriverCount: summary.drivers.length,
-    keyEvents: summary.keyEvents.map((e) => e.text),
+    // Capped (TODO-075). The model is asked to summarise, but handed five
+    // fully-formed event sentences it reliably enumerates them instead — and
+    // every one of those sentences is printed again, in more detail, in the
+    // alerts section below. Capping what it is SHOWN is the structural fix:
+    // `proseIsSafe` rejects any prose citing a number the facts do not contain,
+    // so the model cannot list events it was never given.
+    keyEvents: summary.keyEvents.slice(0, PROSE_KEY_EVENT_LIMIT).map((e) => e.text),
+    // The true count, not the truncated one — the model may legitimately say
+    // how many events there were without listing them.
     keyEventCount: summary.keyEvents.length,
     counts: summary.counts,
     democracyScore: summary.score,
@@ -687,7 +709,8 @@ Rules:
 - Do not speculate about how a vote will end, do not forecast, do not estimate a probability.
 - Do not add advice; the report has its own recommendations section.
 - No headings, no bullet points, no markdown formatting, no code fences.
-- Plain, factual, unhurried. State the risk level and why, then what happened.`;
+- Plain, factual, unhurried. State the risk level and why, then what happened.
+- Do NOT enumerate the events one by one. They are listed in full further down the report; your job is to characterise the week, not to repeat the list.`;
 
 export interface ExecutiveSummaryProseOptions {
   /**
@@ -772,11 +795,58 @@ export function formatExecutiveSummarySection(summary: ExecutiveSummary, prose: 
       : `- ${NO_DRIVERS}`,
   ];
 
-  // Omitted entirely rather than filled: an empty "Key events" heading reads as
-  // a rendering bug, and inventing entries to reach a target count is worse.
-  if (summary.keyEvents.length > 0) {
-    lines.push('', '**Key events:**', summary.keyEvents.map((e) => `- ${e.text}`).join('\n'));
+  // "Key events" used to be listed here. It was removed in TODO-075: every
+  // entry was a restatement of an alert printed in full a page later, and the
+  // at-a-glance table now carries the same job with an action attached.
+  // `summary.keyEvents` is still computed — `buildAtAGlanceRows` ranks by it.
+  return lines.join('\n');
+}
+
+/** Cap on the at-a-glance table. Three is what fits on one screen and in one head. */
+export const AT_A_GLANCE_LIMIT = 3;
+
+/** Escapes the one character that would break out of a markdown table cell. */
+function cell(value: string): string {
+  return value.replace(/\|/g, '\\|').replace(/\n+/g, ' ').trim();
+}
+
+/**
+ * The table the report opens with (TODO-076): risk, what it is about, when it
+ * expires, who should pick it up, and what to do.
+ *
+ * Rows come from the recommendations rather than from `keyEvents`, because a
+ * row without an action is a headline, and the customer asked for something
+ * they can work from. The recommendation list is already sorted by priority
+ * then deadline, so taking the first N takes the most urgent N.
+ *
+ * Fewer than `AT_A_GLANCE_LIMIT` real rows means fewer rows. Nothing is padded
+ * to fill the table — the entire report is built on not inventing content, and
+ * a table is the most authoritative-looking place to break that rule.
+ */
+export function formatAtAGlanceSection(
+  summary: ExecutiveSummary,
+  recommendations: readonly Recommendation[],
+): string {
+  const marker = RISK_MARKERS[summary.riskLevel];
+  // Leads with `\n\n` like every other section formatter, so
+  // `composeOrgReportBody` can concatenate the sections with a bare join.
+  const heading = `\n\n## ⚡ At a glance\n\n**${marker} Governance risk: ${summary.riskLevel.toUpperCase()}** · week of ${summary.weekOf}`;
+
+  const rows = recommendations
+    .filter((r) => r.ruleId !== 'no_action_needed')
+    .slice(0, AT_A_GLANCE_LIMIT);
+
+  if (rows.length === 0) {
+    return `${heading}\n\n_No action items this week. What was reviewed is listed under "Recommended actions"._`;
   }
 
-  return lines.join('\n');
+  const body = rows
+    .map((r) =>
+      `| ${cell(r.riskLabel)} | ${cell(r.subjectLabel)} | ${
+        r.deadline ? r.deadline.toISOString().slice(0, 10) : '—'
+      } | ${cell(OWNER_LABEL[r.owner])} | ${cell(r.action)} |`,
+    )
+    .join('\n');
+
+  return `${heading}\n\n| Risk | Affected | Deadline | Owner | Action |\n| --- | --- | --- | --- | --- |\n${body}`;
 }

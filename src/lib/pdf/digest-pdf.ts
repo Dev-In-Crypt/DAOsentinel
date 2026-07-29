@@ -136,10 +136,71 @@ export interface DigestPdfInput {
   body: string;
 }
 
+/** A markdown table row: starts and ends with a pipe. */
+function isTableRow(line: string): boolean {
+  return line.startsWith('|') && line.endsWith('|');
+}
+
+/** `| --- | :--: |` — the separator under a table header, which carries no content. */
+function isTableDivider(line: string): boolean {
+  return isTableRow(line) && /^\|[\s:|-]+\|$/.test(line);
+}
+
+function splitRow(line: string): string[] {
+  return line
+    .slice(1, -1)
+    .split('|')
+    .map((c) => c.replace(/\\\|/g, '|').trim());
+}
+
+/**
+ * Tables become labelled blocks, not columns.
+ *
+ * The at-a-glance table (TODO-076) has an Action column holding a full
+ * sentence, and Helvetica is proportional — laying that out in real columns
+ * would need column-width measurement and mid-cell wrapping for one table in
+ * one document. Emitting `Header: value` lines per row keeps every value
+ * readable and every header attached to it, which is what the table is for.
+ *
+ * Without this, `| a | b |` fell through to the plain-text branch and the PDF
+ * showed raw pipes.
+ */
+function renderTable(layout: Layout, rows: string[][]) {
+  const [header, ...body] = rows;
+  if (!header) return;
+
+  for (const row of body) {
+    // First cell is the row's headline; the rest are its attributes.
+    layout.drawLine('•', { size: 11, gapAfter: 0 });
+    layout.y += 11 * 1.35;
+    layout.drawWrapped(tokenize(`**${row[0] ?? ''}**`), { x: MARGIN + 14, size: 11 });
+
+    for (let i = 1; i < header.length; i += 1) {
+      const value = row[i];
+      if (!value || value === '—') continue;
+      layout.drawWrapped(tokenize(`${header[i]}: ${value}`), { x: MARGIN + 26, size: 10 });
+    }
+  }
+}
+
 function renderBody(layout: Layout, body: string) {
-  for (const raw of body.split('\n')) {
-    const line = raw.trim();
+  const lines = body.split('\n');
+
+  for (let i = 0; i < lines.length; i += 1) {
+    const line = lines[i].trim();
     if (!line) continue;
+
+    if (isTableRow(line)) {
+      const rows: string[][] = [];
+      while (i < lines.length && isTableRow(lines[i].trim())) {
+        const current = lines[i].trim();
+        if (!isTableDivider(current)) rows.push(splitRow(current));
+        i += 1;
+      }
+      i -= 1; // the outer loop advances again
+      renderTable(layout, rows);
+      continue;
+    }
 
     if (line.startsWith('### ')) {
       layout.drawLine(line.slice(4), { size: 12, bold: true, gapAfter: 4 });

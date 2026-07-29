@@ -61,6 +61,15 @@ export const VOTES_QUERY = /* GraphQL */ `
   }
 `;
 
+/**
+ * `admins`/`members`/`moderators`/`treasuries` are the space's own declaration
+ * of which addresses belong to the DAO (TODO-074). They are the only
+ * authoritative source we have for calling an address DAO-controlled or a
+ * treasury — everything else would be inference dressed up as fact.
+ *
+ * All four are optional in practice: plenty of spaces leave them empty, and
+ * callers must treat a missing list as "unknown", never as "not a DAO address".
+ */
 export const SPACE_QUERY = /* GraphQL */ `
   query Space($id: String!) {
     space(id: $id) {
@@ -73,6 +82,14 @@ export const SPACE_QUERY = /* GraphQL */ `
       network
       followersCount
       proposalsCount
+      admins
+      members
+      moderators
+      treasuries {
+        name
+        address
+        network
+      }
     }
   }
 `;
@@ -105,6 +122,12 @@ export interface SnapshotVote {
   reason: string | null;
 }
 
+export interface SnapshotTreasury {
+  name: string | null;
+  address: string | null;
+  network: string | null;
+}
+
 export interface SnapshotSpace {
   id: string;
   name: string;
@@ -115,6 +138,12 @@ export interface SnapshotSpace {
   network: string | null;
   followersCount: number;
   proposalsCount: number;
+  // Nullable across the board: the hub omits these for spaces that never set
+  // them, and an absent list means "we don't know", not "there are none".
+  admins: string[] | null;
+  members: string[] | null;
+  moderators: string[] | null;
+  treasuries: SnapshotTreasury[] | null;
 }
 
 // Token-bucket-ish helper to stay within 120 req / 20 s

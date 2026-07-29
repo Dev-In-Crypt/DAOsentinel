@@ -44,6 +44,10 @@ function alert(over: Partial<AttentionAlert> = {}): AttentionAlert {
     whatHappened: 'A single address cast a large share of voting power.',
     whyItMatters: 'One counterparty can carry the vote.',
     participants: '0x1234…cdef — voted "For"',
+    voter: null,
+    normalizedTitle: '',
+    choiceKey: '1',
+    collapsedCount: 0,
     deadline: null,
     proposalTitle: null,
     createdAt: WEEK_OF,
@@ -533,14 +537,20 @@ describe('formatExecutiveSummarySection', () => {
     expect(md).not.toContain('**Key events:**');
   });
 
-  it('emits exactly as many key-event bullets as there were events', () => {
+  // TODO-075: key events are still COMPUTED (the at-a-glance table ranks by
+  // them) but no longer PRINTED here — every bullet restated an alert the
+  // report prints in full a page later.
+  it('still computes key events but no longer prints them in this section', () => {
     const s = buildExecutiveSummary(
       baseInput({ alerts: [alert({ id: 'a', severity: 'critical' }), alert({ id: 'b' })] }),
     );
-    const md = formatExecutiveSummarySection(s, 'prose');
-    const bullets = md.slice(md.indexOf('**Key events:**')).split('\n').filter((l) => l.startsWith('- '));
-    expect(bullets).toHaveLength(s.keyEvents.length);
     expect(s.keyEvents).toHaveLength(2);
+
+    const md = formatExecutiveSummarySection(s, 'prose');
+    expect(md).not.toContain('**Key events:**');
+    for (const event of s.keyEvents) {
+      expect(md).not.toContain(event.text);
+    }
   });
 
   it('distinguishes its scale from the per-proposal AI risk rating', () => {

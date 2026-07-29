@@ -29,7 +29,7 @@
 import { and, desc, eq, gt, inArray, sql } from 'drizzle-orm';
 import { db } from '../../db';
 import { alerts, proposals } from '../../db/schema';
-import { shortenAddress } from '@/lib/utils';
+import { normalizeProposalTitle, shortenAddress } from '@/lib/utils';
 
 /** Every alert type any service currently inserts. */
 export const ATTENTION_ALERT_TYPES = [
@@ -88,6 +88,25 @@ export interface AttentionAlert {
   deadline: Date | null;
   proposalTitle: string | null;
   createdAt: Date;
+  /** Lowercased voter address for `whale_vote`; null for every other type. */
+  voter: string | null;
+  /** The proposal title with trailing clone tags stripped — part of the dedupe key. */
+  normalizedTitle: string;
+  /**
+   * The raw choice index from the payload, as a string. Part of the dedupe key
+   * and deliberately NOT the rendered choice text: the same choice can render
+   * differently across clones, and the percentage embedded in `participants`
+   * differs on every clone by a decimal or two — keying on that text meant
+   * nothing ever matched and no clone was ever collapsed.
+   */
+  choiceKey: string;
+  /**
+   * How many near-identical alerts this one stands for, beyond itself. `0`
+   * means it is the only one. Surfaced in the text rather than silently
+   * dropped: "also on 3 near-identical clones" is information, a missing
+   * alert is a hole.
+   */
+  collapsedCount: number;
 }
 
 // =============================================
@@ -265,6 +284,10 @@ export function describeAlert(row: AttentionAlertRow): AttentionAlert {
     deadline: row.proposalId ? row.proposalEndsAt : null,
     proposalTitle: row.proposalId ? row.proposalTitle : null,
     createdAt: row.createdAt,
+    voter: row.type === 'whale_vote' ? readString(asRecord(row.data), 'voter')?.toLowerCase() ?? null : null,
+    normalizedTitle: normalizeProposalTitle(row.proposalTitle),
+    choiceKey: String(readIndex(asRecord(row.data), 'choice') ?? ''),
+    collapsedCount: 0,
   };
 }
 
@@ -300,13 +323,40 @@ export function describeAlerts(rows: AttentionAlertRow[]): AttentionAlert[] {
         createdAtMs(b.createdAt) - createdAtMs(a.createdAt),
     );
 
-  // Thin whale_vote runs per proposal, keeping the highest-severity/newest
-  // ones (the sort above already ordered them). Other types pass through
-  // untouched — there is only ever one score_drop or quorum_risk per subject.
+  // Two passes, in this order:
+  //
+  // 1. Collapse the SAME whale casting the SAME vote across clones of one
+  //    proposal into a single item. Keying on `proposalTitle` (as this did
+  //    until TODO-075) does not catch them, because clone titles differ by
+  //    their suffix — which is how one whale's one decision printed four
+  //    times, and why the section ran to eight near-identical blocks.
+  // 2. Only then apply the per-proposal cap, so the cap is spent on
+  //    *different* whales rather than on repeats of one.
+  const byIdentity = new Map<string, AttentionAlert>();
+  const collapsed: AttentionAlert[] = [];
+  for (const alert of sorted) {
+    if (alert.type !== 'whale_vote' || !alert.voter) {
+      collapsed.push(alert);
+      continue;
+    }
+    // Keyed on the choice INDEX, not on `participants`: that string embeds the
+    // percentage, which differs by a decimal on every clone, so no two clones
+    // ever compared equal and the collapse never happened. The index still
+    // keeps a whale who voted DIFFERENTLY on two clones as two facts.
+    const key = `${alert.voter}|${alert.normalizedTitle}|${alert.choiceKey}`;
+    const existing = byIdentity.get(key);
+    if (existing) {
+      existing.collapsedCount += 1;
+      continue;
+    }
+    byIdentity.set(key, alert);
+    collapsed.push(alert);
+  }
+
   const perProposal = new Map<string, number>();
-  return sorted.filter((a) => {
+  return collapsed.filter((a) => {
     if (a.type !== 'whale_vote') return true;
-    const key = a.proposalTitle ?? a.id;
+    const key = a.normalizedTitle || a.id;
     const seen = perProposal.get(key) ?? 0;
     if (seen >= MAX_WHALE_ALERTS_PER_PROPOSAL) return false;
     perProposal.set(key, seen + 1);
@@ -326,31 +376,84 @@ const SEVERITY_MARKERS: Record<string, string> = {
  * to show, and otherwise leads with `\n\n` so it appends cleanly onto an
  * existing report body.
  */
+/** Heading for each type's group. Falls back to the raw type for unknown ones. */
+const TYPE_HEADINGS: Record<string, string> = {
+  whale_vote: 'Whale votes',
+  quorum_risk: 'Quorum at risk',
+  last_minute_swing: 'Late swings',
+  coordinated_voting: 'Coordinated voting',
+  score_drop: 'Democracy Score drop',
+};
+
+/** The order types appear in. Anything unlisted sorts last, stably. */
+const TYPE_ORDER = [
+  'quorum_risk',
+  'whale_vote',
+  'coordinated_voting',
+  'last_minute_swing',
+  'score_drop',
+];
+
+/**
+ * Grouped by alert type, with each type's "why it matters" printed ONCE as the
+ * group's preamble.
+ *
+ * It used to be repeated inside every item. `whyItMattersFor` is a pure
+ * function of the type, so eight whale alerts meant the same ~70-word
+ * paragraph eight times — around a thousand words of the report saying nothing
+ * new, and the actual per-alert facts buried between the repeats.
+ */
 export function formatAttentionAlertsSection(items: AttentionAlert[]): string {
   if (items.length === 0) return '';
 
-  const blocks = items.map((a) => {
-    const marker = SEVERITY_MARKERS[a.severity] ?? '⚪';
-    // Several detectors already bake the proposal title into the alert title
-    // ("⚡ Vote swing detected on <title>"); don't print it twice.
-    const showProposal = a.proposalTitle !== null && !a.title.includes(a.proposalTitle);
-    const heading = showProposal
-      ? `- ${marker} **${a.title}** — _${a.proposalTitle}_`
-      : `- ${marker} **${a.title}**`;
+  const byType = new Map<string, AttentionAlert[]>();
+  for (const item of items) {
+    const bucket = byType.get(item.type);
+    if (bucket) bucket.push(item);
+    else byType.set(item.type, [item]);
+  }
 
-    const lines = [
-      heading,
-      `  - **What happened:** ${a.whatHappened}`,
-      `  - **Why it matters:** ${a.whyItMatters}`,
-      `  - **Who:** ${a.participants}`,
-    ];
-    // Omitted entirely for DAO-level alerts — an empty "Deadline:" line reads
-    // like missing data rather than "there is no deadline".
-    if (a.deadline) lines.push(`  - **Deadline:** ${a.deadline.toISOString().slice(0, 10)}`);
-    return lines.join('\n');
-  });
+  const rank = (type: string) => {
+    const i = TYPE_ORDER.indexOf(type);
+    return i === -1 ? TYPE_ORDER.length : i;
+  };
 
-  return `\n\n## 🚨 Alerts requiring attention\n${blocks.join('\n')}`;
+  const groups = [...byType.entries()]
+    .sort(([a], [b]) => rank(a) - rank(b))
+    .map(([type, group]) => {
+      const heading = TYPE_HEADINGS[type] ?? type.replace(/_/g, ' ');
+      const lines = [
+        `### ${heading} (${group.length})`,
+        `_${group[0].whyItMatters}_`,
+        '',
+        ...group.map(formatAlertItem),
+      ];
+      return lines.join('\n');
+    });
+
+  return `\n\n## 🚨 Alerts requiring attention\n${groups.join('\n\n')}`;
+}
+
+function formatAlertItem(a: AttentionAlert): string {
+  const marker = SEVERITY_MARKERS[a.severity] ?? '⚪';
+  // Several detectors already bake the proposal title into the alert title
+  // ("⚡ Vote swing detected on <title>"); don't print it twice.
+  const showProposal = a.proposalTitle !== null && !a.title.includes(a.proposalTitle);
+  const heading = showProposal
+    ? `- ${marker} **${a.title}** — _${a.proposalTitle}_`
+    : `- ${marker} **${a.title}**`;
+
+  const lines = [heading, `  - **What happened:** ${a.whatHappened}`, `  - **Who:** ${a.participants}`];
+
+  if (a.collapsedCount > 0) {
+    lines.push(
+      `  - **Also on:** ${a.collapsedCount} near-identical clone${a.collapsedCount === 1 ? '' : 's'} of this proposal — same address, same choice.`,
+    );
+  }
+  // Omitted entirely for DAO-level alerts — an empty "Deadline:" line reads
+  // like missing data rather than "there is no deadline".
+  if (a.deadline) lines.push(`  - **Deadline:** ${a.deadline.toISOString().slice(0, 10)}`);
+  return lines.join('\n');
 }
 
 // =============================================

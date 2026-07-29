@@ -18,6 +18,34 @@ export function isValidUuid(value: string): boolean {
   return UUID_RE.test(value);
 }
 
+/**
+ * Trailing bracketed suffixes only — `Title - [25-day-clone]` → `Title`.
+ *
+ * DAOs routinely publish one proposal several times with different voting
+ * windows (Aavegotchi's `[25-day-clone]`/`[32-day-clone]` pairs). Those are
+ * separate rows with separate ids, so every per-proposal cap in the report
+ * counted them separately and printed the same whale four times over.
+ *
+ * Anchored to the END of the string on purpose: leading tags carry meaning
+ * (`[SIGPROP] …`, `[AGIP-42] …`) and stripping them would merge genuinely
+ * different proposals into one.
+ */
+const TRAILING_BRACKET_RE = /(?:\s*[-—–]\s*)?\[[^\]]*\]\s*$/;
+
+export function normalizeProposalTitle(title: string | null | undefined): string {
+  if (!title) return '';
+  let out = title.trim();
+  // Loop: a title can end with more than one bracketed tag.
+  let previous: string;
+  do {
+    previous = out;
+    out = out.replace(TRAILING_BRACKET_RE, '').trim();
+  } while (out !== previous && out !== '');
+  // A title that is nothing BUT a bracketed tag keeps its original text —
+  // returning '' would collapse every such proposal into one dedupe bucket.
+  return out === '' ? title.trim() : out;
+}
+
 export function shortenAddress(address: string, chars = 4): string {
   if (!address) return '';
   if (address.length <= chars * 2 + 2) return address;
