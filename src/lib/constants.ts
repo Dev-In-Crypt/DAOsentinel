@@ -16,6 +16,19 @@ export const SCORE_WEIGHTS = {
   manipulationResistance: 0.2,
 } as const;
 
+// Canonical display names for the five Democracy Score axes. Lifted here
+// (TODO-063) so server-side output — the org weekly report's score
+// attribution — and the UI name the same metric the same way. The DAO
+// profile, org dashboard and compare pages still keep local copies; migrating
+// those call sites to this export is a separate change.
+export const METRIC_LABEL: Record<string, string> = {
+  participation: 'Voter participation',
+  powerDistribution: 'Power distribution',
+  proposalDiversity: 'Proposal diversity',
+  delegateAccountability: 'Delegate accountability',
+  manipulationResistance: 'Manipulation resistance',
+};
+
 // One-line methodology hints surfaced as tooltips wherever a Democracy Score
 // axis is displayed. Honesty matters: participation is labeled as the proxy
 // it is, not as true token-holder turnout.
