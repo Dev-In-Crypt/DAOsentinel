@@ -22,9 +22,11 @@ const PAGE_HEIGHT = 841.89;
 const MARGIN = 48;
 const MAX_WIDTH = PAGE_WIDTH - MARGIN * 2;
 
+type WordStyle = 'regular' | 'bold' | 'italic' | 'code';
+
 interface Word {
   text: string;
-  bold: boolean;
+  style: WordStyle;
 }
 
 /**
@@ -41,40 +43,117 @@ interface Word {
 const WINANSI_EXTRAS = '•–—‘’“”…';
 const SANITIZE_RE = new RegExp(`[^\\x20-\\x7E\\xA0-\\xFF${WINANSI_EXTRAS}]`, 'g');
 
-function sanitizeForPdf(text: string): string {
-  return text
+/**
+ * Characters that carry MEANING and must survive as an ASCII equivalent rather
+ * than being dropped by the strip above.
+ *
+ * The score attribution prints "40 → 45". Stripping the arrow left "40 45" in
+ * a paid report — which reads as a typo and, worse, loses the direction of the
+ * change. Anything decorative (emoji) still gets dropped; only characters
+ * whose absence changes the meaning are mapped.
+ */
+const TRANSLITERATE: Array<[RegExp, string]> = [
+  [/[→⟶]/g, '->'],
+  [/[←⟵]/g, '<-'],
+  [/⇒/g, '=>'],
+  [/≤/g, '<='],
+  [/≥/g, '>='],
+  [/≈/g, '~'],
+  [/×/g, 'x'],
+  [/·/g, '-'],
+  [/‑/g, '-'],
+  // Non-breaking / thin spaces collapse to a plain space rather than vanishing
+  // and gluing two words together.
+  [/[   ]/g, ' '],
+];
+
+export function sanitizeForPdf(text: string): string {
+  let out = text;
+  for (const [re, to] of TRANSLITERATE) out = out.replace(re, to);
+  return out
     .replace(SANITIZE_RE, '')
     .replace(/\s+/g, ' ')
     .trim();
 }
 
-/** Splits a markdown line into words, tagging which ones fall inside `**bold**` spans. */
-function tokenize(line: string): Word[] {
-  const segments = line.split(/(\*\*.+?\*\*)/g).filter((s) => s.length > 0);
+/**
+ * Splits a markdown line into styled words.
+ *
+ * Handles `**bold**`, `_italic_` and `` `code` ``. Until TODO-079 only bold was
+ * recognised, so the report's italic notes and its `` `rule_id` `` references
+ * printed their markers as literal text — the customer saw
+ * "_Each action below is produced…_" and "`critical_alert`" with the
+ * punctuation intact, which is the single most obvious way for a paid PDF to
+ * look unfinished.
+ *
+ * The italic arm requires the closing `_` to end a word so `snake_case`
+ * identifiers are not chopped into fake emphasis — the same rule the email
+ * template uses.
+ */
+const MD_SPAN_RE = /(\*\*[^*]+?\*\*|`[^`]+?`|(?:^|(?<=\s))_[^_]+?_(?=[\s.,;:!?)]|$))/g;
+
+export function tokenize(line: string): Word[] {
+  const segments = line.split(MD_SPAN_RE).filter((s) => s.length > 0);
   const words: Word[] = [];
   for (const seg of segments) {
-    const bold = seg.startsWith('**') && seg.endsWith('**');
-    const clean = sanitizeForPdf(bold ? seg.slice(2, -2) : seg);
+    let style: WordStyle = 'regular';
+    let inner = seg;
+    if (seg.startsWith('**') && seg.endsWith('**')) {
+      style = 'bold';
+      inner = seg.slice(2, -2);
+    } else if (seg.startsWith('`') && seg.endsWith('`')) {
+      style = 'code';
+      inner = seg.slice(1, -1);
+    } else if (/^_[^_]+_$/.test(seg.trim())) {
+      style = 'italic';
+      inner = seg.trim().slice(1, -1);
+    }
+    const clean = sanitizeForPdf(inner);
     for (const w of clean.split(/\s+/).filter((w) => w.length > 0)) {
-      words.push({ text: w, bold });
+      words.push({ text: w, style });
     }
   }
   return words;
 }
 
-class Layout {
-  doc: PDFDocument;
+interface Fonts {
   regular: PDFFont;
   bold: PDFFont;
+  italic: PDFFont;
+  code: PDFFont;
+}
+
+class Layout {
+  doc: PDFDocument;
+  fonts: Fonts;
   page: PDFPage;
   y: number;
 
-  constructor(doc: PDFDocument, regular: PDFFont, bold: PDFFont, page: PDFPage) {
+  constructor(doc: PDFDocument, fonts: Fonts, page: PDFPage) {
     this.doc = doc;
-    this.regular = regular;
-    this.bold = bold;
+    this.fonts = fonts;
     this.page = page;
     this.y = PAGE_HEIGHT - MARGIN;
+  }
+
+  private get regular() {
+    return this.fonts.regular;
+  }
+
+  private fontFor(style: WordStyle): PDFFont {
+    return this.fonts[style];
+  }
+
+  /** A thin rule for the markdown `---` break, which used to print literally. */
+  drawRule(gapAfter = 10) {
+    this.ensureSpace(gapAfter);
+    this.page.drawLine({
+      start: { x: MARGIN, y: this.y },
+      end: { x: PAGE_WIDTH - MARGIN, y: this.y },
+      thickness: 0.5,
+      color: rgb(0.8, 0.82, 0.85),
+    });
+    this.y -= gapAfter;
   }
 
   private ensureSpace(lineHeight: number) {
@@ -97,7 +176,7 @@ class Layout {
       x: MARGIN,
       y: this.y - size,
       size,
-      font: bold ? this.bold : this.regular,
+      font: bold ? this.fonts.bold : this.fonts.regular,
       color,
     });
     this.y -= lineHeight + gapAfter;
@@ -113,7 +192,7 @@ class Layout {
     this.ensureSpace(lineHeight);
 
     for (const word of words) {
-      const font = word.bold ? this.bold : this.regular;
+      const font = this.fontFor(word.style);
       const wordWidth = font.widthOfTextAtSize(word.text, size);
 
       if (cursorX !== x && cursorX + wordWidth > x + maxWidth) {
@@ -202,6 +281,13 @@ function renderBody(layout: Layout, body: string) {
       continue;
     }
 
+    if (/^-{3,}$/.test(line)) {
+      // The report's break before its methodology footer. Without this arm it
+      // fell through to the paragraph case and printed "---" as literal text.
+      layout.drawRule();
+      continue;
+    }
+
     if (line.startsWith('### ')) {
       layout.drawLine(line.slice(4), { size: 12, bold: true, gapAfter: 4 });
     } else if (line.startsWith('## ')) {
@@ -220,12 +306,24 @@ function renderBody(layout: Layout, body: string) {
 
 export async function renderDigestPdf({ title, weekOfLabel, body }: DigestPdfInput): Promise<Buffer> {
   const doc = await PDFDocument.create();
-  const regular = await doc.embedFont(StandardFonts.Helvetica);
-  const bold = await doc.embedFont(StandardFonts.HelveticaBold);
+  const fonts: Fonts = {
+    regular: await doc.embedFont(StandardFonts.Helvetica),
+    bold: await doc.embedFont(StandardFonts.HelveticaBold),
+    italic: await doc.embedFont(StandardFonts.HelveticaOblique),
+    // Courier for `code` spans: the report cites rule ids like `critical_alert`,
+    // and a monospace face is what marks them as identifiers rather than prose.
+    code: await doc.embedFont(StandardFonts.Courier),
+  };
   const page = doc.addPage([PAGE_WIDTH, PAGE_HEIGHT]);
 
-  const layout = new Layout(doc, regular, bold, page);
-  layout.drawLine(title, { size: 20, bold: true, gapAfter: 6 });
+  const layout = new Layout(doc, fonts, page);
+  // WRAPPED, not `drawLine`: the org report title is
+  // "{org} — {dao} governance report — week of {date}", which overruns an A4
+  // width and was being cut off mid-word on the first page.
+  layout.drawWrapped(
+    title.split(/\s+/).map((w) => ({ text: sanitizeForPdf(w), style: 'bold' as const })),
+    { size: 18, gapAfter: 2 },
+  );
   layout.drawLine(`Week of ${weekOfLabel} — DAO Sentinel`, { size: 10, color: rgb(0.42, 0.45, 0.52), gapAfter: 16 });
   renderBody(layout, body);
 
