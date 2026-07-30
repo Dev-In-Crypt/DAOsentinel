@@ -434,10 +434,20 @@ export async function sendOrgDigestToMembers(
   // but Resend's batch endpoint does not actually deliver them — and silently
   // dropping the PDF is worse than the extra requests. Org member lists are a
   // handful of people, not a newsletter blast, so the cost is negligible.
+  console.log(
+    `[org-digest] sending to ${recipients.length} recipient(s), attachment: ${
+      attachments ? `${attachments[0].filename} (${(attachments[0].content.length / 1024).toFixed(0)}KB)` : 'NONE'
+    }`,
+  );
+
   let sent = 0;
   for (const to of recipients) {
     try {
-      await resend.emails.send({
+      // The Resend SDK does NOT throw on a rejected send — it resolves to
+      // `{ data: null, error }`. Awaiting it and counting the recipient (as
+      // this did until TODO-078) records a delivery that never happened, and
+      // then `markOrgReportSent` stamps the week so the retry never comes.
+      const res = await resend.emails.send({
         from,
         to,
         subject: report.title,
@@ -445,9 +455,14 @@ export async function sendOrgDigestToMembers(
         text: report.body,
         attachments,
       });
+      if (res.error) {
+        console.error('[org-digest] resend rejected the send:', res.error);
+        continue;
+      }
+      console.log(`[org-digest] accepted, id=${res.data?.id ?? 'unknown'}`);
       sent += 1;
     } catch (err) {
-      console.error(`resend org-digest send failed for one recipient`, err);
+      console.error('[org-digest] resend threw for one recipient', err);
     }
   }
 
