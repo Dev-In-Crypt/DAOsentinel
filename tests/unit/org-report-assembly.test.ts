@@ -282,8 +282,13 @@ describe('composeOrgReportBody — a busy week', () => {
 
   it('carries the risk level and its drivers up top', () => {
     expect(body).toContain('Governance risk: HIGH');
-    expect(body).toContain('`decisive_whale_open_vote`');
-    expect(body).toContain('`severe_score_drop`');
+    // Internal codes are not printed any more (TODO-080); the driver reads as
+    // its level plus the specific fact that fired it.
+    expect(body).not.toContain('`decisive_whale_open_vote`');
+    expect(body).toContain('**High** —');
+    // The score driver reads as its level plus the actual move (TODO-080).
+    expect(body).not.toContain('`severe_score_drop`');
+    expect(body).toContain('severe-drop threshold');
   });
 
   it('keeps the evidence sections intact', () => {
@@ -317,7 +322,8 @@ describe('composeOrgReportBody — an empty week', () => {
     expect(body).toContain('Governance risk: LOW');
     expect(body).toContain('No risk condition fired');
     expect(body).toContain('## 🎯 Recommended actions');
-    expect(body).toContain('no_action_needed');
+    // The reassuring line itself, not the rule id behind it (TODO-080).
+    expect(body).toContain('No action required from this report');
     expect(body).toContain('## 📐 Methodology & definitions');
   });
 

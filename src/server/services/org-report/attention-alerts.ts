@@ -376,6 +376,28 @@ const SEVERITY_MARKERS: Record<string, string> = {
  * to show, and otherwise leads with `\n\n` so it appends cleanly onto an
  * existing report body.
  */
+/**
+ * Plain-English name for an alert type, with a count.
+ *
+ * The report used to write counts as `${n} ${type.replace(/_/g,' ')}`, which
+ * printed the enum member — "4 whale vote", singular and lifted straight out of
+ * the code. Customers do not read our type names, and a report that shows them
+ * reads like a debug dump.
+ */
+const ALERT_TYPE_NOUN: Record<string, [singular: string, plural: string]> = {
+  whale_vote: ['whale vote', 'whale votes'],
+  quorum_risk: ['quorum warning', 'quorum warnings'],
+  last_minute_swing: ['late swing', 'late swings'],
+  coordinated_voting: ['coordinated-voting flag', 'coordinated-voting flags'],
+  score_drop: ['Democracy Score drop', 'Democracy Score drops'],
+};
+
+export function alertTypeCount(type: string, count: number): string {
+  const nouns = ALERT_TYPE_NOUN[type];
+  if (!nouns) return `${count} ${type.replace(/_/g, ' ')}`;
+  return `${count} ${count === 1 ? nouns[0] : nouns[1]}`;
+}
+
 /** Heading for each type's group. Falls back to the raw type for unknown ones. */
 const TYPE_HEADINGS: Record<string, string> = {
   whale_vote: 'Whale votes',

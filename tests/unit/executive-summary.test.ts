@@ -525,7 +525,11 @@ describe('formatExecutiveSummarySection', () => {
     expect(md.startsWith('\n\n## 🧭 Executive summary')).toBe(true);
     expect(md).toContain('Governance risk: ELEVATED');
     expect(md).toContain('**Why this level:**');
-    expect(md).toContain('`quorum_at_risk`');
+    // TODO-080: the internal RiskDriverCode is no longer printed — the driver
+    // is identified by its level and its detail, both of which a reader can use.
+    expect(md).not.toContain('`quorum_at_risk`');
+    expect(md).toContain('**Elevated** —');
+    expect(md).toContain('of quorum');
   });
 
   it('states what was checked on a quiet week rather than rendering an empty section', () => {

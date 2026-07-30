@@ -719,7 +719,9 @@ describe('formatRecommendationsSection', () => {
     expect(md).not.toBe('');
     expect(md.startsWith('\n\n## 🎯 Recommended actions')).toBe(true);
     expect(md).toContain('- ⚪ **No action required from this report');
-    expect(md).toContain('`no_action_needed`');
+    // The rule id stays on the object for the API and CSV, but is not shown.
+    expect(md).not.toContain('`no_action_needed`');
+    expect(md).toContain('  - **Why:**');
     // No deadline line on an untimed item.
     expect(md).not.toContain('**By:**');
   });
@@ -729,7 +731,8 @@ describe('formatRecommendationsSection', () => {
 
     expect(md.startsWith('\n\n## 🎯 Recommended actions')).toBe(true);
     expect(md).toContain('🔴');
-    expect(md).toContain('  - **Trigger:** `quorum_push` —');
+    expect(md).toContain('  - **Why:**');
+    expect(md).not.toContain('`quorum_push`');
     expect(md).toContain('  - **By:** 2026-08-01');
     // Style-matched to formatFallback: `- **bold**` bullets under a `## ` header.
     for (const line of md.split('\n')) {
@@ -737,10 +740,22 @@ describe('formatRecommendationsSection', () => {
     }
   });
 
-  it('prints one Trigger line per recommendation', () => {
+  it('prints one evidence line per recommendation', () => {
     const recs = buildRecommendations(busyWeek(), NOW);
     const md = formatRecommendationsSection(recs);
-    expect(md.split('  - **Trigger:**').length - 1).toBe(recs.length);
+    expect(md.split('  - **Why:**').length - 1).toBe(recs.length);
+  });
+
+  // The traceability contract survives the id being hidden: the evidence still
+  // names the proposal / address / metric and the real numbers.
+  it('keeps every recommendation traceable without showing an internal id', () => {
+    const recs = buildRecommendations(busyWeek(), NOW);
+    const md = formatRecommendationsSection(recs);
+    for (const r of recs) {
+      expect(r.ruleId).toBeTruthy();
+      expect(md).toContain(r.evidence);
+      expect(md).not.toContain(`\`${r.ruleId}\``);
+    }
   });
 });
 

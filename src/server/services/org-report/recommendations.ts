@@ -924,7 +924,11 @@ export function formatRecommendationsSection(items: readonly Recommendation[]): 
   const blocks = items.map((r) => {
     const lines = [
       `- ${PRIORITY_MARKERS[r.priority]} **${r.action}**`,
-      `  - **Trigger:** \`${r.ruleId}\` — ${r.evidence}`,
+      // `ruleId` is deliberately NOT printed. Traceability was the point of
+      // showing it, but that job is done by the evidence — which names the
+      // proposal, the address and the real numbers — while the id itself is an
+      // internal enum the reader cannot interpret. It stays on the object.
+      `  - **Why:** ${r.evidence}`,
     ];
     // Omitted rather than blank when the item isn't time-boxed: an empty
     // "By:" reads as missing data instead of "there is no deadline".

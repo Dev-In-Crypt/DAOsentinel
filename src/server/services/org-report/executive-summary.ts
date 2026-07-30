@@ -28,7 +28,7 @@
 
 import { chat } from '../../ai/openrouter';
 import { formatNumber, formatPct, shortenAddress } from '@/lib/utils';
-import type { AttentionAlert } from './attention-alerts';
+import { alertTypeCount, type AttentionAlert } from './attention-alerts';
 import type { ScoreAttribution } from './score-attribution';
 import type { UpcomingProposalItem } from './upcoming-quorum';
 import type { WhaleContextItem } from './whale-context';
@@ -359,7 +359,7 @@ export function buildRiskDrivers(input: ExecutiveSummaryInput): RiskDriver[] {
     for (const a of critical) byType.set(a.type, (byType.get(a.type) ?? 0) + 1);
     const breakdown = [...byType.entries()]
       .sort(([, a], [, b]) => b - a)
-      .map(([type, n]) => `${n} ${type.replace(/_/g, ' ')}`)
+      .map(([type, n]) => alertTypeCount(type, n))
       .join(', ');
     drivers.push({
       code: 'critical_alert',
@@ -790,7 +790,11 @@ export function formatExecutiveSummarySection(summary: ExecutiveSummary, prose: 
     '**Why this level:**',
     summary.drivers.length > 0
       ? summary.drivers
-          .map((d) => `- \`${d.code}\` (${d.level}) — ${d.detail}`)
+          // The internal `RiskDriverCode` used to lead this line. It is our enum
+          // member, not a word the customer knows, and the detail that follows
+          // already says what fired — so the code is dropped from the rendered
+          // text and kept on the object for the CSV and API surfaces.
+          .map((d) => `- **${d.level[0].toUpperCase()}${d.level.slice(1)}** — ${d.detail}`)
           .join('\n')
       : `- ${NO_DRIVERS}`,
   ];
