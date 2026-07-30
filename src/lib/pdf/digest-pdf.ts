@@ -33,6 +33,10 @@ const MAX_LIST_DEPTH = 3;
 /** Horizontal step per nesting level. */
 const INDENT_STEP = 16;
 
+/** Air above a `##` section heading, and above a `###` sub-heading. */
+const SECTION_GAP = 16;
+const SUBSECTION_GAP = 8;
+
 const PAGE_WIDTH = 595.28; // A4
 const PAGE_HEIGHT = 841.89;
 const MARGIN = 48;
@@ -190,6 +194,22 @@ class Layout {
       color: rgb(1, 1, 1),
     });
     this.y -= height + 12;
+  }
+
+  /**
+   * Vertical air before a heading.
+   *
+   * Space goes BEFORE the heading, not after it: a heading belongs close to
+   * the text it introduces and far from the section that ended above it.
+   * Adding the gap after instead would push every heading away from its own
+   * content, which is the opposite of what makes sections scannable.
+   *
+   * Skipped at the very top of a page — leading whitespace under a page break
+   * reads as a rendering fault, not as spacing.
+   */
+  addGap(px: number) {
+    if (this.y >= PAGE_HEIGHT - MARGIN - 1) return;
+    this.y -= px;
   }
 
   /** A thin rule for the markdown `---` break, which used to print literally. */
@@ -367,9 +387,11 @@ function renderBody(layout: Layout, body: string) {
     }
 
     if (line.startsWith('### ')) {
+      layout.addGap(SUBSECTION_GAP);
       layout.drawLine(line.slice(4), { size: 12, bold: true, gapAfter: 4, color: INK_MUTED });
     } else if (line.startsWith('## ')) {
-      layout.drawLine(line.slice(3), { size: 13, bold: true, gapAfter: 6, color: ACCENT });
+      layout.addGap(SECTION_GAP);
+      layout.drawLine(line.slice(3), { size: 14, bold: true, gapAfter: 8, color: ACCENT });
     } else if (line.startsWith('# ')) {
       layout.drawLine(line.slice(2), { size: 16, bold: true, gapAfter: 8 });
     } else if (line.startsWith('- ') || line.startsWith('* ')) {
