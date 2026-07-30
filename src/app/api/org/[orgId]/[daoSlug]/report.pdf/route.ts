@@ -68,6 +68,7 @@ export async function GET(
     title: report.title,
     weekOfLabel,
     body: report.bodyWithoutTitle,
+    riskLevel: report.riskLevel,
   });
 
   const datestamp = report.weekStart.toISOString().slice(0, 10);

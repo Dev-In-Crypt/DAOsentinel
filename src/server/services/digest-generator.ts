@@ -421,6 +421,7 @@ export async function sendOrgDigestToMembers(
         timeZone: 'UTC',
       }),
       body: report.bodyWithoutTitle,
+      riskLevel: report.riskLevel,
     });
     attachments = [
       { filename: `dao-sentinel-${daoSlug}-report-${base.weekStart}.pdf`, content: pdf },

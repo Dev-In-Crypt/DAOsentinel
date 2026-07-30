@@ -17,6 +17,22 @@ import { PDFDocument, StandardFonts, rgb, type PDFFont, type PDFPage } from 'pdf
  * conflict.
  */
 
+/**
+ * Colours. Muted on purpose: this is a document a customer may print, and the
+ * dark UI palette does not survive on paper. Accent is used only for section
+ * headings and the risk word, so colour marks structure rather than decorating.
+ */
+const INK = rgb(0.07, 0.09, 0.15);
+const INK_MUTED = rgb(0.42, 0.45, 0.52);
+const ACCENT = rgb(0.13, 0.45, 0.35);
+const RULE_GREY = rgb(0.8, 0.82, 0.85);
+const LABEL_GREY = rgb(0.35, 0.38, 0.45);
+
+/** Deepest nesting the layout indents for; beyond this the text column gets too narrow. */
+const MAX_LIST_DEPTH = 3;
+/** Horizontal step per nesting level. */
+const INDENT_STEP = 16;
+
 const PAGE_WIDTH = 595.28; // A4
 const PAGE_HEIGHT = 841.89;
 const MARGIN = 48;
@@ -144,6 +160,38 @@ class Layout {
     return this.fonts[style];
   }
 
+  /**
+   * A filled banner naming the week's risk level.
+   *
+   * The only non-text graphic in the document, and deliberately so: it encodes
+   * a value the report already computes, in the one place a reader's eye lands
+   * first. Anything richer — quorum meters, score-attribution bars — needs the
+   * underlying NUMBERS, and this renderer is handed markdown, so those would
+   * have to be regex-recovered from prose. That trade is not worth it.
+   */
+  drawRiskBanner(level: string) {
+    const label = level.trim().toUpperCase();
+    const fill = RISK_FILL[level.trim().toLowerCase()] ?? INK_MUTED;
+    const height = 22;
+
+    this.ensureSpace(height + 8);
+    this.page.drawRectangle({
+      x: MARGIN,
+      y: this.y - height,
+      width: MAX_WIDTH,
+      height,
+      color: fill,
+    });
+    this.page.drawText(sanitizeForPdf(`GOVERNANCE RISK: ${label}`), {
+      x: MARGIN + 10,
+      y: this.y - height + 7,
+      size: 10,
+      font: this.fonts.bold,
+      color: rgb(1, 1, 1),
+    });
+    this.y -= height + 12;
+  }
+
   /** A thin rule for the markdown `---` break, which used to print literally. */
   drawRule(gapAfter = 10) {
     this.ensureSpace(gapAfter);
@@ -151,7 +199,7 @@ class Layout {
       start: { x: MARGIN, y: this.y },
       end: { x: PAGE_WIDTH - MARGIN, y: this.y },
       thickness: 0.5,
-      color: rgb(0.8, 0.82, 0.85),
+      color: RULE_GREY,
     });
     this.y -= gapAfter;
   }
@@ -164,16 +212,17 @@ class Layout {
   }
 
   /** Draws a single-style line (headings, meta) with no wrapping. */
-  drawLine(text: string, { size, bold = false, color = rgb(0.07, 0.09, 0.15), gapAfter = 4 }: {
+  drawLine(text: string, { size, bold = false, color = INK, gapAfter = 4, x = MARGIN }: {
     size: number;
     bold?: boolean;
     color?: ReturnType<typeof rgb>;
     gapAfter?: number;
+    x?: number;
   }) {
     const lineHeight = size * 1.3;
     this.ensureSpace(lineHeight);
     this.page.drawText(sanitizeForPdf(text), {
-      x: MARGIN,
+      x,
       y: this.y - size,
       size,
       font: bold ? this.fonts.bold : this.fonts.regular,
@@ -183,7 +232,10 @@ class Layout {
   }
 
   /** Draws word-wrapped, mixed bold/regular text starting at `x`, wrapping within maxWidth. */
-  drawWrapped(words: Word[], { x = MARGIN, size = 11, gapAfter = 6 }: { x?: number; size?: number; gapAfter?: number } = {}) {
+  drawWrapped(
+    words: Word[],
+    { x = MARGIN, size = 11, gapAfter = 6, color = INK }: { x?: number; size?: number; gapAfter?: number; color?: ReturnType<typeof rgb> } = {},
+  ) {
     const lineHeight = size * 1.35;
     const spaceWidth = this.regular.widthOfTextAtSize(' ', size);
     const maxWidth = MAX_WIDTH - (x - MARGIN);
@@ -201,7 +253,7 @@ class Layout {
         cursorX = x;
       }
 
-      this.page.drawText(word.text, { x: cursorX, y: this.y - size, size, font, color: rgb(0.07, 0.09, 0.15) });
+      this.page.drawText(word.text, { x: cursorX, y: this.y - size, size, font, color });
       cursorX += wordWidth + spaceWidth;
     }
 
@@ -213,7 +265,23 @@ export interface DigestPdfInput {
   title: string;
   weekOfLabel: string;
   body: string;
+  /**
+   * Draws the coloured risk banner when supplied. Passed EXPLICITLY rather than
+   * parsed out of `body`: the risk level is the single most consequential word
+   * in the document, and recovering it by regex from prose we ourselves wrote
+   * would make a rendering detail depend on the wording never changing. Omitted
+   * by the public digest, which has no risk level.
+   */
+  riskLevel?: string;
 }
+
+/** Banner fill per risk level. Unknown levels get the neutral grey, never a guess. */
+const RISK_FILL: Record<string, ReturnType<typeof rgb>> = {
+  high: rgb(0.86, 0.25, 0.25),
+  elevated: rgb(0.91, 0.6, 0.13),
+  moderate: rgb(0.2, 0.55, 0.75),
+  low: rgb(0.16, 0.6, 0.4),
+};
 
 /** A markdown table row: starts and ends with a pipe. */
 function isTableRow(line: string): boolean {
@@ -266,8 +334,18 @@ function renderBody(layout: Layout, body: string) {
   const lines = body.split('\n');
 
   for (let i = 0; i < lines.length; i += 1) {
-    const line = lines[i].trim();
+    const raw = lines[i];
+    const line = raw.trim();
     if (!line) continue;
+
+    // Nesting depth, read from the RAW line. `lines[i].trim()` used to be the
+    // first thing that happened to every line, which threw away the leading
+    // whitespace — the only thing distinguishing "- 🔴 Whale vote" from its
+    // "  - What happened:" child. Every bullet then drew at the same x and the
+    // report's structure was flat on the page while the web and email versions
+    // showed it correctly. Two spaces per level, matching the markdown the
+    // report emits.
+    const depth = Math.min(Math.floor((raw.length - raw.trimStart().length) / 2), MAX_LIST_DEPTH);
 
     if (isTableRow(line)) {
       const rows: string[][] = [];
@@ -289,22 +367,34 @@ function renderBody(layout: Layout, body: string) {
     }
 
     if (line.startsWith('### ')) {
-      layout.drawLine(line.slice(4), { size: 12, bold: true, gapAfter: 4 });
+      layout.drawLine(line.slice(4), { size: 12, bold: true, gapAfter: 4, color: INK_MUTED });
     } else if (line.startsWith('## ')) {
-      layout.drawLine(line.slice(3), { size: 13, bold: true, gapAfter: 6 });
+      layout.drawLine(line.slice(3), { size: 13, bold: true, gapAfter: 6, color: ACCENT });
     } else if (line.startsWith('# ')) {
       layout.drawLine(line.slice(2), { size: 16, bold: true, gapAfter: 8 });
     } else if (line.startsWith('- ') || line.startsWith('* ')) {
-      layout.drawLine('•', { size: 11, gapAfter: 0 });
+      const bulletX = MARGIN + depth * INDENT_STEP;
+      // Nested levels get a lighter mark and lighter text, so depth reads at a
+      // glance rather than only from the indent.
+      layout.drawLine(depth === 0 ? '•' : '–', {
+        size: 11,
+        gapAfter: 0,
+        x: bulletX,
+        color: depth === 0 ? INK : LABEL_GREY,
+      });
       layout.y += 11 * 1.35; // bullet mark and text share one line
-      layout.drawWrapped(tokenize(line.slice(2)), { x: MARGIN + 14, size: 11 });
+      layout.drawWrapped(tokenize(line.slice(2)), {
+        x: bulletX + 12,
+        size: depth === 0 ? 11 : 10,
+        color: depth === 0 ? INK : LABEL_GREY,
+      });
     } else {
-      layout.drawWrapped(tokenize(line), { size: 11 });
+      layout.drawWrapped(tokenize(line), { x: MARGIN + depth * INDENT_STEP, size: 11 });
     }
   }
 }
 
-export async function renderDigestPdf({ title, weekOfLabel, body }: DigestPdfInput): Promise<Buffer> {
+export async function renderDigestPdf({ title, weekOfLabel, body, riskLevel }: DigestPdfInput): Promise<Buffer> {
   const doc = await PDFDocument.create();
   const fonts: Fonts = {
     regular: await doc.embedFont(StandardFonts.Helvetica),
@@ -324,7 +414,8 @@ export async function renderDigestPdf({ title, weekOfLabel, body }: DigestPdfInp
     title.split(/\s+/).map((w) => ({ text: sanitizeForPdf(w), style: 'bold' as const })),
     { size: 18, gapAfter: 2 },
   );
-  layout.drawLine(`Week of ${weekOfLabel} — DAO Sentinel`, { size: 10, color: rgb(0.42, 0.45, 0.52), gapAfter: 16 });
+  layout.drawLine(`Week of ${weekOfLabel} — DAO Sentinel`, { size: 10, color: INK_MUTED, gapAfter: 14 });
+  if (riskLevel) layout.drawRiskBanner(riskLevel);
   renderBody(layout, body);
 
   const bytes = await doc.save();
