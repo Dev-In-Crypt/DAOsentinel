@@ -14,6 +14,7 @@ import {
   users,
 } from '../db/schema';
 import { getOrGenerateOrgReport, markOrgReportSent } from './org-report/store';
+import { renderDigestPdf } from '@/lib/pdf/digest-pdf';
 
 const resend = process.env.RESEND_API_KEY ? new Resend(process.env.RESEND_API_KEY) : null;
 
@@ -401,16 +402,52 @@ export async function sendOrgDigestToMembers(
   }
 
   const from = process.env.EMAIL_FROM ?? 'DAO Sentinel <noreply@daosentinel.xyz>';
+
+  // The same report as a PDF, attached (TODO-078). The HTML body stays the
+  // primary read; the attachment is what a customer forwards to their board,
+  // prints, or files — and it renders identically everywhere, which HTML mail
+  // does not. Built once for the whole run, not per recipient.
+  //
+  // Failure here must not block delivery: an unattachable PDF is worth far
+  // less than the report itself.
+  let attachments: { filename: string; content: Buffer }[] | undefined;
+  try {
+    const pdf = await renderDigestPdf({
+      title: report.title,
+      weekOfLabel: report.weekStart.toLocaleDateString('en-US', {
+        year: 'numeric',
+        month: 'long',
+        day: 'numeric',
+        timeZone: 'UTC',
+      }),
+      body: report.bodyWithoutTitle,
+    });
+    attachments = [
+      { filename: `dao-sentinel-${daoSlug}-report-${base.weekStart}.pdf`, content: pdf },
+    ];
+  } catch (err) {
+    console.error('[org-digest] PDF render failed — sending without the attachment', err);
+  }
+
+  // Sent per recipient rather than through `resend.batch.send`. The SDK's batch
+  // type permits `attachments` because it reuses the single-send options type,
+  // but Resend's batch endpoint does not actually deliver them — and silently
+  // dropping the PDF is worse than the extra requests. Org member lists are a
+  // handful of people, not a newsletter blast, so the cost is negligible.
   let sent = 0;
-  for (let i = 0; i < recipients.length; i += 50) {
-    const batch = recipients.slice(i, i + 50);
+  for (const to of recipients) {
     try {
-      await resend.batch.send(
-        batch.map((to) => ({ from, to, subject: report.title, html, text: report.body })),
-      );
-      sent += batch.length;
+      await resend.emails.send({
+        from,
+        to,
+        subject: report.title,
+        html,
+        text: report.body,
+        attachments,
+      });
+      sent += 1;
     } catch (err) {
-      console.error('resend org-digest batch failed', err);
+      console.error(`resend org-digest send failed for one recipient`, err);
     }
   }
 

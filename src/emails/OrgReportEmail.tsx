@@ -116,9 +116,31 @@ export default function OrgReportEmail(p: OrgReportEmailProps) {
 // ride in on.
 
 type Block =
-  | { kind: 'h1' | 'h2' | 'p'; text: string }
+  | { kind: 'h1' | 'h2' | 'h3' | 'p'; text: string }
   | { kind: 'hr' }
-  | { kind: 'bullets'; items: string[] };
+  | { kind: 'bullets'; items: string[] }
+  | { kind: 'table'; header: string[]; rows: string[][] };
+
+/** A markdown table row: starts and ends with a pipe. */
+function isTableRow(line: string): boolean {
+  return line.startsWith('|') && line.endsWith('|');
+}
+
+/** `| --- | :--: |` — the alignment row under a header, which carries no content. */
+function isTableDivider(line: string): boolean {
+  return isTableRow(line) && /^\|[\s:|-]+\|$/.test(line);
+}
+
+function splitRow(line: string): string[] {
+  return line
+    .slice(1, -1)
+    .split('|')
+    // `/\\\|/` — an escaped backslash followed by an escaped pipe, matching the
+    // literal two characters `\|`. NOT `/\\|/`, which reads as "a backslash OR
+    // nothing" and therefore matches the empty string at every position,
+    // inserting a pipe between every character of the cell.
+    .map((c) => c.replace(/\\\|/g, '|').trim());
+}
 
 /** Splits the body into blocks. Anything unrecognised falls through as a paragraph. */
 function parseBlocks(markdown: string): Block[] {
@@ -132,6 +154,17 @@ function parseBlocks(markdown: string): Block[] {
       // this arm it would fall through to the paragraph case and print "---" as
       // literal text in a paid email.
       blocks.push({ kind: 'hr' });
+    } else if (isTableRow(line.trim())) {
+      // Tables arrived with the at-a-glance section (TODO-076). Without this
+      // arm every row fell through to the paragraph case and the customer's
+      // email opened with a wall of literal `|` characters.
+      const cells = splitRow(line.trim());
+      const last = blocks[blocks.length - 1];
+      if (isTableDivider(line.trim())) continue;
+      if (last && last.kind === 'table') last.rows.push(cells);
+      else blocks.push({ kind: 'table', header: cells, rows: [] });
+    } else if (line.startsWith('### ')) {
+      blocks.push({ kind: 'h3', text: line.slice(4).trim() });
     } else if (line.startsWith('## ')) {
       blocks.push({ kind: 'h2', text: line.slice(3).trim() });
     } else if (line.startsWith('# ')) {
@@ -192,6 +225,42 @@ function MarkdownBody({ markdown, accent }: { markdown: string; accent: string }
             <Text key={i} style={{ ...bodyH2, color: accent }}>
               {renderInline(block.text)}
             </Text>
+          );
+        }
+        if (block.kind === 'h3') {
+          return (
+            <Text key={i} style={bodyH3}>
+              {renderInline(block.text)}
+            </Text>
+          );
+        }
+        if (block.kind === 'table') {
+          // A real <table>, not a <pre> grid: Gmail and Outlook both render
+          // tables reliably, and the at-a-glance row holds a full sentence in
+          // its last cell, which any fixed-width layout would truncate.
+          return (
+            <table key={i} style={tableStyle}>
+              <thead>
+                <tr>
+                  {block.header.map((h, j) => (
+                    <th key={j} style={{ ...tableCell, ...tableHeadCell }}>
+                      {renderInline(h)}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {block.rows.map((row, r) => (
+                  <tr key={r}>
+                    {block.header.map((_, c) => (
+                      <td key={c} style={tableCell}>
+                        {renderInline(row[c] ?? '')}
+                      </td>
+                    ))}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           );
         }
         if (block.kind === 'hr') {
@@ -257,6 +326,26 @@ const card = {
 };
 const bodyH1 = { color: '#fafafa', fontSize: '17px', fontWeight: 600, margin: '16px 0 4px' };
 const bodyH2 = { fontSize: '14px', fontWeight: 600, textTransform: 'uppercase' as const, letterSpacing: '0.04em', margin: '20px 0 4px' };
+const bodyH3 = { color: '#fafafa', fontSize: '13px', fontWeight: 600, margin: '16px 0 4px' };
+// Fixed layout + wrapped cells: the Action column holds a full sentence, and
+// without these the table stretches past the email's width in Outlook.
+const tableStyle = {
+  width: '100%',
+  borderCollapse: 'collapse' as const,
+  tableLayout: 'fixed' as const,
+  margin: '8px 0 16px',
+};
+const tableCell = {
+  color: '#fafafa',
+  fontSize: '12px',
+  lineHeight: '18px',
+  padding: '6px 8px',
+  border: '1px solid #262626',
+  textAlign: 'left' as const,
+  verticalAlign: 'top' as const,
+  wordBreak: 'break-word' as const,
+};
+const tableHeadCell = { color: '#a3a3a3', fontWeight: 600, textTransform: 'uppercase' as const, fontSize: '11px', letterSpacing: '0.04em' };
 const paragraph = { color: '#fafafa', fontSize: '14px', lineHeight: '22px', margin: '8px 0' };
 const list = { margin: '4px 0 12px', paddingLeft: '20px' };
 const listItem = { color: '#fafafa', fontSize: '14px', lineHeight: '22px', marginBottom: '4px' };

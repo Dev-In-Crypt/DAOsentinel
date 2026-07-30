@@ -137,3 +137,62 @@ describe('OrgReportEmail', () => {
     expect(bad).not.toContain('javascript:alert(1)');
   });
 });
+
+describe('OrgReportEmail — tables and h3 (TODO-078)', () => {
+  const TABLE_BODY = [
+    '## ⚡ At a glance',
+    '',
+    '**🟠 Governance risk: ELEVATED** · week of 2026-07-29',
+    '',
+    '| Risk | Affected | Deadline | Owner | Action |',
+    '| --- | --- | --- | --- | --- |',
+    '| Largest holder: 19.8% | Fee switch | 2026-08-22 | Research | Identify whether 0xfe69…457f is a known address |',
+    '| Quorum at risk | Grants r12 | — | Delegate relations | Push turnout |',
+    '',
+    '### Whale votes (4)',
+    '',
+    '- 🔴 **Whale vote** — _Fee switch_',
+  ].join('\n');
+
+  it('renders a real <table>, not literal pipes', async () => {
+    const html = await renderOrgReport(props({ markdownBody: TABLE_BODY }));
+    expect(html).toContain('<table');
+    expect(html).toContain('<thead');
+    expect(html).toContain('<td');
+    // The regression: every row used to fall through to the paragraph case.
+    expect(html).not.toContain('| Risk | Affected |');
+    expect(html).not.toContain('| --- |');
+  });
+
+  it('keeps every header and cell value', async () => {
+    const html = await renderOrgReport(props({ markdownBody: TABLE_BODY }));
+    for (const cell of ['Risk', 'Affected', 'Deadline', 'Owner', 'Action']) {
+      expect(html).toContain(cell);
+    }
+    expect(html).toContain('Largest holder: 19.8%');
+    expect(html).toContain('Push turnout');
+    expect(html).toContain('Delegate relations');
+  });
+
+  it('renders ### as a heading rather than printing the hashes', async () => {
+    const html = await renderOrgReport(props({ markdownBody: TABLE_BODY }));
+    expect(html).toContain('Whale votes (4)');
+    expect(html).not.toContain('### Whale votes');
+  });
+
+  it('does not let a short row shift the columns of a long one', async () => {
+    const ragged = ['| A | B | C |', '| --- | --- | --- |', '| 1 |', '| 1 | 2 | 3 |'].join('\n');
+    const html = await renderOrgReport(props({ markdownBody: ragged }));
+    expect(html).toContain('<table');
+    // Every row is padded to the header width, so cell 3 of the short row is
+    // empty rather than absent — otherwise the table would render skewed.
+    expect(html).not.toContain('| 1 |');
+  });
+
+  it('still escapes markup inside a table cell', async () => {
+    const evil = ['| Risk |', '| --- |', '| <script>alert(1)</script> |'].join('\n');
+    const html = await renderOrgReport(props({ markdownBody: evil }));
+    expect(html).not.toContain('<script>alert(1)</script>');
+    expect(html).toContain('&lt;script&gt;');
+  });
+});
