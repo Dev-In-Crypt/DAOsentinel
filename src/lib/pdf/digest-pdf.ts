@@ -37,6 +37,16 @@ const INDENT_STEP = 16;
 const SECTION_GAP = 16;
 const SUBSECTION_GAP = 8;
 
+/**
+ * How far a justified line may stretch its spaces, as a multiple of the normal
+ * space. Past this the line grows "rivers" of white and reads worse than a
+ * ragged right edge would, so it falls back to left-aligned. Short lines — a
+ * two-word bullet, a heading — are exactly the case this protects.
+ */
+const MAX_SPACE_STRETCH = 2.6;
+
+type Align = 'left' | 'center' | 'justify';
+
 const PAGE_WIDTH = 595.28; // A4
 const PAGE_HEIGHT = 841.89;
 const MARGIN = 48;
@@ -232,52 +242,118 @@ class Layout {
   }
 
   /** Draws a single-style line (headings, meta) with no wrapping. */
-  drawLine(text: string, { size, bold = false, color = INK, gapAfter = 4, x = MARGIN }: {
+  drawLine(text: string, { size, bold = false, color = INK, gapAfter = 4, x = MARGIN, align = 'left' }: {
     size: number;
     bold?: boolean;
     color?: ReturnType<typeof rgb>;
     gapAfter?: number;
     x?: number;
+    align?: 'left' | 'center';
   }) {
     const lineHeight = size * 1.3;
+    const clean = sanitizeForPdf(text);
+    const font = bold ? this.fonts.bold : this.fonts.regular;
+
+    // Centre within the text column, not the page, so a centred heading lines
+    // up with the block it introduces rather than with the paper.
+    const drawX =
+      align === 'center'
+        ? x + Math.max(0, (MAX_WIDTH - (x - MARGIN) - font.widthOfTextAtSize(clean, size)) / 2)
+        : x;
+
     this.ensureSpace(lineHeight);
-    this.page.drawText(sanitizeForPdf(text), {
-      x,
-      y: this.y - size,
-      size,
-      font: bold ? this.fonts.bold : this.fonts.regular,
-      color,
-    });
+    this.page.drawText(clean, { x: drawX, y: this.y - size, size, font, color });
     this.y -= lineHeight + gapAfter;
   }
 
-  /** Draws word-wrapped, mixed bold/regular text starting at `x`, wrapping within maxWidth. */
+  /**
+   * Word-wrapped, mixed-style text starting at `x`.
+   *
+   * Two passes: break the words into lines, THEN draw each line. The single
+   * greedy pass this replaced could not justify, because justification needs to
+   * know a line's full contents — how much width is left over, and how many
+   * gaps to spread it across — before any of its words are placed.
+   */
   drawWrapped(
     words: Word[],
-    { x = MARGIN, size = 11, gapAfter = 6, color = INK }: { x?: number; size?: number; gapAfter?: number; color?: ReturnType<typeof rgb> } = {},
+    {
+      x = MARGIN,
+      size = 11,
+      gapAfter = 6,
+      color = INK,
+      align = 'left',
+    }: {
+      x?: number;
+      size?: number;
+      gapAfter?: number;
+      color?: ReturnType<typeof rgb>;
+      align?: Align;
+    } = {},
   ) {
+    if (words.length === 0) {
+      this.y -= gapAfter;
+      return;
+    }
+
     const lineHeight = size * 1.35;
     const spaceWidth = this.regular.widthOfTextAtSize(' ', size);
     const maxWidth = MAX_WIDTH - (x - MARGIN);
+    const widthOf = (w: Word) => this.fontFor(w.style).widthOfTextAtSize(w.text, size);
 
-    let cursorX = x;
-    this.ensureSpace(lineHeight);
-
+    // Pass 1 — break into lines.
+    const lines: Word[][] = [];
+    let current: Word[] = [];
+    let currentWidth = 0;
     for (const word of words) {
-      const font = this.fontFor(word.style);
-      const wordWidth = font.widthOfTextAtSize(word.text, size);
+      const w = widthOf(word);
+      const projected = current.length === 0 ? w : currentWidth + spaceWidth + w;
+      if (current.length > 0 && projected > maxWidth) {
+        lines.push(current);
+        current = [word];
+        currentWidth = w;
+      } else {
+        current.push(word);
+        currentWidth = projected;
+      }
+    }
+    if (current.length > 0) lines.push(current);
 
-      if (cursorX !== x && cursorX + wordWidth > x + maxWidth) {
-        this.y -= lineHeight;
-        this.ensureSpace(lineHeight);
-        cursorX = x;
+    // Pass 2 — place them.
+    for (let i = 0; i < lines.length; i += 1) {
+      const line = lines[i];
+      const isLastLine = i === lines.length - 1;
+      const naturalWidth = line.reduce((sum, w) => sum + widthOf(w), 0);
+      const gaps = line.length - 1;
+
+      let gap = spaceWidth;
+      let startX = x;
+
+      if (align === 'justify' && !isLastLine && gaps > 0) {
+        // The last line of a block is never justified — stretching it would
+        // pull two trailing words to opposite margins, which is the classic
+        // way justified text announces that it was done by a machine.
+        const stretched = (maxWidth - naturalWidth) / gaps;
+        gap = stretched > spaceWidth * MAX_SPACE_STRETCH ? spaceWidth : stretched;
+      } else if (align === 'center') {
+        startX = x + Math.max(0, (maxWidth - (naturalWidth + gaps * spaceWidth)) / 2);
       }
 
-      this.page.drawText(word.text, { x: cursorX, y: this.y - size, size, font, color });
-      cursorX += wordWidth + spaceWidth;
+      this.ensureSpace(lineHeight);
+      let cursorX = startX;
+      for (const word of line) {
+        this.page.drawText(word.text, {
+          x: cursorX,
+          y: this.y - size,
+          size,
+          font: this.fontFor(word.style),
+          color,
+        });
+        cursorX += widthOf(word) + gap;
+      }
+      this.y -= lineHeight;
     }
 
-    this.y -= lineHeight + gapAfter;
+    this.y -= gapAfter;
   }
 }
 
@@ -387,13 +463,16 @@ function renderBody(layout: Layout, body: string) {
     }
 
     if (line.startsWith('### ')) {
+      // Left, NOT centred: a sub-heading labels the list immediately under it
+      // ("Whale votes (4)"), and centring would float it away from the thing
+      // it names. Only the document's own section titles are centred.
       layout.addGap(SUBSECTION_GAP);
       layout.drawLine(line.slice(4), { size: 12, bold: true, gapAfter: 4, color: INK_MUTED });
     } else if (line.startsWith('## ')) {
       layout.addGap(SECTION_GAP);
-      layout.drawLine(line.slice(3), { size: 14, bold: true, gapAfter: 8, color: ACCENT });
+      layout.drawLine(line.slice(3), { size: 14, bold: true, gapAfter: 8, color: ACCENT, align: 'center' });
     } else if (line.startsWith('# ')) {
-      layout.drawLine(line.slice(2), { size: 16, bold: true, gapAfter: 8 });
+      layout.drawLine(line.slice(2), { size: 16, bold: true, gapAfter: 8, align: 'center' });
     } else if (line.startsWith('- ') || line.startsWith('* ')) {
       const bulletX = MARGIN + depth * INDENT_STEP;
       // Nested levels get a lighter mark and lighter text, so depth reads at a
@@ -409,9 +488,14 @@ function renderBody(layout: Layout, body: string) {
         x: bulletX + 12,
         size: depth === 0 ? 11 : 10,
         color: depth === 0 ? INK : LABEL_GREY,
+        align: 'justify',
       });
     } else {
-      layout.drawWrapped(tokenize(line), { x: MARGIN + depth * INDENT_STEP, size: 11 });
+      layout.drawWrapped(tokenize(line), {
+        x: MARGIN + depth * INDENT_STEP,
+        size: 11,
+        align: 'justify',
+      });
     }
   }
 }
@@ -434,9 +518,9 @@ export async function renderDigestPdf({ title, weekOfLabel, body, riskLevel }: D
   // width and was being cut off mid-word on the first page.
   layout.drawWrapped(
     title.split(/\s+/).map((w) => ({ text: sanitizeForPdf(w), style: 'bold' as const })),
-    { size: 18, gapAfter: 2 },
+    { size: 18, gapAfter: 2, align: 'center' },
   );
-  layout.drawLine(`Week of ${weekOfLabel} — DAO Sentinel`, { size: 10, color: INK_MUTED, gapAfter: 14 });
+  layout.drawLine(`Week of ${weekOfLabel} — DAO Sentinel`, { size: 10, color: INK_MUTED, gapAfter: 14, align: 'center' });
   if (riskLevel) layout.drawRiskBanner(riskLevel);
   renderBody(layout, body);
 
