@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   formatWeekRange,
+  parseStoredVisuals,
   startOfIsoWeekUtc,
   stripLeadingH1,
 } from '@/server/services/org-report/store';
@@ -114,5 +115,60 @@ describe('formatWeekRange', () => {
     // Monday 00:00 UTC is Sunday evening in the Americas; a local-time
     // formatter would print the previous day here.
     expect(formatWeekRange(new Date('2026-07-27T00:00:00.000Z'))).toMatch(/^27 Jul/);
+  });
+});
+
+/**
+ * `payload` is untyped jsonb. Every row written before TODO-081 has no
+ * `visuals` key at all, so the archive — reports customers can still download
+ * — is full of legacy shapes this must not choke on.
+ */
+describe('parseStoredVisuals', () => {
+  it('reads a well-formed payload back out unchanged', () => {
+    const visuals = {
+      quorumMeters: [{ label: 'Fee switch activation', pct: 62, status: 'at_risk' }],
+      attributionBars: [{ label: 'Voter participation', contribution: -5 }],
+    };
+    expect(parseStoredVisuals({ summary: {}, recommendations: [], visuals })).toEqual(visuals);
+  });
+
+  it('degrades to empty arrays for a legacy row with no visuals key', () => {
+    expect(parseStoredVisuals({ summary: {}, recommendations: [] })).toEqual({
+      quorumMeters: [],
+      attributionBars: [],
+    });
+  });
+
+  it('degrades to empty arrays for a null payload', () => {
+    expect(parseStoredVisuals(null)).toEqual({ quorumMeters: [], attributionBars: [] });
+  });
+
+  it('drops malformed entries instead of throwing', () => {
+    const payload = {
+      visuals: {
+        quorumMeters: [
+          { label: 'ok', pct: 50, status: 'met' },
+          { label: 'bad status', pct: 50, status: 'nonsense' },
+          { pct: 50, status: 'met' },
+          'not an object',
+          null,
+        ],
+        attributionBars: [
+          { label: 'ok', contribution: -1 },
+          { label: 'bad', contribution: 'x' },
+        ],
+      },
+    };
+    expect(parseStoredVisuals(payload)).toEqual({
+      quorumMeters: [{ label: 'ok', pct: 50, status: 'met' }],
+      attributionBars: [{ label: 'ok', contribution: -1 }],
+    });
+  });
+
+  it('degrades when the arrays are not arrays', () => {
+    expect(parseStoredVisuals({ visuals: { quorumMeters: 'nope', attributionBars: 7 } })).toEqual({
+      quorumMeters: [],
+      attributionBars: [],
+    });
   });
 });

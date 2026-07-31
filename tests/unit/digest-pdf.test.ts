@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { renderDigestPdf, sanitizeForPdf, tokenize } from '@/lib/pdf/digest-pdf';
+import { renderDigestPdf, sanitizeForPdf, tokenize, truncateToWidth } from '@/lib/pdf/digest-pdf';
 
 describe('renderDigestPdf', () => {
   it('produces a valid PDF buffer for a representative markdown digest body', async () => {
@@ -117,5 +117,113 @@ describe('PDF inline formatting (TODO-079)', () => {
     const long = 'QA — Email Render — Aavegotchi governance report — week of 2026-07-27';
     const pdf = await renderDigestPdf({ title: long, weekOfLabel: 'July 27, 2026', body: 'x' });
     expect(pdf.subarray(0, 5).toString()).toBe('%PDF-');
+  });
+});
+
+describe('PDF visual summary (TODO-081)', () => {
+  // The load-bearing one: the free public digest never passes `visuals`, so
+  // this feature must be provably invisible on that path.
+  it('renders nothing extra when visuals is omitted or empty', async () => {
+    const body = '## 📰 Top stories\n- **A thing happened.**';
+    const withoutVisuals = await renderDigestPdf({
+      title: 'T',
+      weekOfLabel: 'July 27, 2026',
+      body,
+    });
+    const withEmptyVisuals = await renderDigestPdf({
+      title: 'T',
+      weekOfLabel: 'July 27, 2026',
+      body,
+      visuals: { quorumMeters: [], attributionBars: [] },
+    });
+    expect(withEmptyVisuals.length).toBe(withoutVisuals.length);
+  });
+
+  it('draws quorum meters and grows the document', async () => {
+    const base = await renderDigestPdf({ title: 'T', weekOfLabel: 'July 27, 2026', body: 'x' });
+    const withMeters = await renderDigestPdf({
+      title: 'T',
+      weekOfLabel: 'July 27, 2026',
+      body: 'x',
+      visuals: {
+        quorumMeters: [
+          { label: 'Fee switch activation', pct: 62, status: 'at_risk' },
+          { label: 'Grants round 12', pct: 101, status: 'met' },
+        ],
+      },
+    });
+    expect(withMeters.subarray(0, 5).toString()).toBe('%PDF-');
+    expect(withMeters.length).toBeGreaterThan(base.length);
+  });
+
+  it('draws attribution bars for both positive and negative contributions', async () => {
+    const pdf = await renderDigestPdf({
+      title: 'T',
+      weekOfLabel: 'July 27, 2026',
+      body: 'x',
+      visuals: {
+        attributionBars: [
+          { label: 'Voter participation', contribution: -5 },
+          { label: 'Power distribution', contribution: 2.5 },
+        ],
+      },
+    });
+    expect(pdf.subarray(0, 5).toString()).toBe('%PDF-');
+  });
+
+  it('does not throw on a proposal title too long for its column', async () => {
+    const longTitle =
+      'A very long governance proposal title that would otherwise run off the right edge of an A4 page if nothing truncated it first';
+    await expect(
+      renderDigestPdf({
+        title: 'T',
+        weekOfLabel: 'July 27, 2026',
+        body: 'x',
+        visuals: { quorumMeters: [{ label: longTitle, pct: 40, status: 'too_early_to_call' }] },
+      }),
+    ).resolves.toBeInstanceOf(Buffer);
+  });
+
+  it('does not throw when many meters force a page break', async () => {
+    const meters = Array.from({ length: 40 }, (_, i) => ({
+      label: `Proposal ${i}`,
+      pct: (i * 7) % 130,
+      status: 'on_track' as const,
+    }));
+    await expect(
+      renderDigestPdf({
+        title: 'T',
+        weekOfLabel: 'July 27, 2026',
+        body: 'x',
+        visuals: { quorumMeters: meters },
+      }),
+    ).resolves.toBeInstanceOf(Buffer);
+  });
+});
+
+describe('truncateToWidth (TODO-081)', () => {
+  it('leaves text that already fits untouched', async () => {
+    const { PDFDocument, StandardFonts } = await import('pdf-lib');
+    const doc = await PDFDocument.create();
+    const font = await doc.embedFont(StandardFonts.Helvetica);
+    expect(truncateToWidth(font, 'short', 10, 500)).toBe('short');
+  });
+
+  it('shortens overlong text and marks it with an ellipsis', async () => {
+    const { PDFDocument, StandardFonts } = await import('pdf-lib');
+    const doc = await PDFDocument.create();
+    const font = await doc.embedFont(StandardFonts.Helvetica);
+    const long = 'a governance proposal title far wider than the space allowed for it';
+    const got = truncateToWidth(font, long, 10, 80);
+    expect(got.endsWith('...')).toBe(true);
+    expect(got.length).toBeLessThan(long.length);
+    expect(font.widthOfTextAtSize(got, 10)).toBeLessThanOrEqual(80);
+  });
+
+  it('degrades to a bare ellipsis when not even one character fits', async () => {
+    const { PDFDocument, StandardFonts } = await import('pdf-lib');
+    const doc = await PDFDocument.create();
+    const font = await doc.embedFont(StandardFonts.Helvetica);
+    expect(truncateToWidth(font, 'anything', 10, 1)).toBe('...');
   });
 });

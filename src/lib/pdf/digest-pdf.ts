@@ -47,6 +47,40 @@ const MAX_SPACE_STRETCH = 2.6;
 
 type Align = 'left' | 'center' | 'justify';
 
+/**
+ * Chart data for the paid org report's PDF-only "Visual summary" block.
+ *
+ * Defined here rather than in the org-report module so the numbers and the
+ * renderer that draws them share one definition — `src/lib` is already the
+ * direction org-report code imports (see its `@/lib/constants` usage), and a
+ * second copy of these shapes is exactly how a field gets added on one side
+ * only.
+ *
+ * These are the ONLY numbers this renderer ever receives. Everything else it
+ * draws is markdown, which is why `fb817aa` left richer visuals undone: the
+ * figures would have had to be regex-recovered from prose. They are threaded
+ * explicitly instead — same reasoning as `riskLevel` above.
+ */
+export type QuorumMeterStatus = 'met' | 'on_track' | 'at_risk' | 'too_early_to_call';
+
+export interface QuorumMeterInput {
+  label: string;
+  /** 0-100+; may exceed 100 once quorum is passed. The bar clamps, the printed figure does not. */
+  pct: number;
+  status: QuorumMeterStatus;
+}
+
+export interface AttributionBarInput {
+  label: string;
+  /** Signed Democracy Score-point contribution; the sign picks the bar's direction and colour. */
+  contribution: number;
+}
+
+export interface DigestPdfVisuals {
+  quorumMeters?: QuorumMeterInput[];
+  attributionBars?: AttributionBarInput[];
+}
+
 const PAGE_WIDTH = 595.28; // A4
 const PAGE_HEIGHT = 841.89;
 const MARGIN = 48;
@@ -146,6 +180,38 @@ export function tokenize(line: string): Word[] {
   return words;
 }
 
+/**
+ * The longest prefix of `text` (plus an ellipsis) that fits `maxWidth`, found
+ * by binary search over the character count.
+ *
+ * Chart labels are proposal titles — user-controlled, no length limit, and
+ * drawn on a fixed-width row that cannot wrap. Without this they run off the
+ * page edge exactly the way the report title used to before `f89a303`.
+ * Returns a bare ellipsis rather than an empty string when not even one
+ * character fits, so a too-narrow column still shows that something is there.
+ */
+export function truncateToWidth(
+  font: PDFFont,
+  text: string,
+  size: number,
+  maxWidth: number,
+): string {
+  if (font.widthOfTextAtSize(text, size) <= maxWidth) return text;
+
+  const ELLIPSIS = '...';
+  let lo = 0;
+  let hi = text.length;
+  while (lo < hi) {
+    const mid = Math.ceil((lo + hi) / 2);
+    if (font.widthOfTextAtSize(text.slice(0, mid) + ELLIPSIS, size) <= maxWidth) {
+      lo = mid;
+    } else {
+      hi = mid - 1;
+    }
+  }
+  return lo === 0 ? ELLIPSIS : text.slice(0, lo) + ELLIPSIS;
+}
+
 interface Fonts {
   regular: PDFFont;
   bold: PDFFont;
@@ -232,6 +298,108 @@ class Layout {
       color: RULE_GREY,
     });
     this.y -= gapAfter;
+  }
+
+  /**
+   * One quorum meter: the proposal, its percentage, and a track-and-fill bar.
+   *
+   * The fill is CLAMPED to the full width at 100% while the printed figure is
+   * not — a vote at 142% of quorum shows a full bar and the real number. The
+   * alternative, scaling every bar to the largest value in the set, would
+   * shrink a struggling vote's bar because some other vote overshot, which is
+   * the opposite of what the reader is looking for here: distance to quorum.
+   */
+  drawQuorumMeter(label: string, pct: number, status: QuorumMeterStatus) {
+    const METER_HEIGHT = 8;
+    const labelHeight = 11 * 1.3;
+    this.ensureSpace(labelHeight + 4 + METER_HEIGHT + 10);
+
+    const color = QUORUM_STATUS_FILL[status] ?? INK_MUTED;
+    const pctText = `${Math.round(pct)}%`;
+    const pctWidth = this.fonts.bold.widthOfTextAtSize(pctText, 10);
+    const clean = truncateToWidth(
+      this.fonts.regular,
+      sanitizeForPdf(label),
+      10,
+      MAX_WIDTH - pctWidth - 10,
+    );
+
+    this.page.drawText(clean, { x: MARGIN, y: this.y - 11, size: 10, font: this.fonts.regular, color: INK });
+    this.page.drawText(pctText, {
+      x: PAGE_WIDTH - MARGIN - pctWidth,
+      y: this.y - 11,
+      size: 10,
+      font: this.fonts.bold,
+      color,
+    });
+    this.y -= labelHeight + 4;
+
+    const trackY = this.y - METER_HEIGHT;
+    this.page.drawRectangle({ x: MARGIN, y: trackY, width: MAX_WIDTH, height: METER_HEIGHT, color: METER_TRACK });
+    const fillWidth = (MAX_WIDTH * Math.min(Math.max(pct, 0), 100)) / 100;
+    if (fillWidth > 0) {
+      this.page.drawRectangle({ x: MARGIN, y: trackY, width: fillWidth, height: METER_HEIGHT, color });
+    }
+    this.y -= METER_HEIGHT + 10;
+  }
+
+  /**
+   * One attribution bar, diverging from a centre tick — right for a metric
+   * that pushed the score up, left for one that pulled it down.
+   *
+   * `maxAbs` is the largest |contribution| across the WHOLE chart and is
+   * passed in rather than computed per row, which is what keeps the bars
+   * comparable: scaled individually, a -0.2 and a -5 would draw identically
+   * and the chart would say nothing at all.
+   */
+  drawAttributionBar(label: string, contribution: number, maxAbs: number) {
+    const BAR_HEIGHT = 7;
+    const rowHeight = 11 * 1.3 + 10;
+    this.ensureSpace(rowHeight);
+
+    const barAreaWidth = MAX_WIDTH * 0.5;
+    const labelWidth = MAX_WIDTH - barAreaWidth - 8;
+    const centerX = MARGIN + labelWidth + 8 + barAreaWidth / 2;
+    const color = contribution >= 0 ? ATTRIBUTION_POSITIVE : ATTRIBUTION_NEGATIVE;
+
+    const clean = truncateToWidth(this.fonts.regular, sanitizeForPdf(label), 10, labelWidth);
+    this.page.drawText(clean, { x: MARGIN, y: this.y - 11, size: 10, font: this.fonts.regular, color: INK });
+
+    const valueText = `${contribution >= 0 ? '+' : ''}${contribution.toFixed(2)}`;
+    const valueWidth = this.fonts.bold.widthOfTextAtSize(valueText, 9);
+    this.page.drawText(valueText, {
+      x: PAGE_WIDTH - MARGIN - valueWidth,
+      y: this.y - 11,
+      size: 9,
+      font: this.fonts.bold,
+      color,
+    });
+
+    // The zero axis, drawn across the FULL row height rather than just beside
+    // the bar. Consecutive rows then join into one continuous line, so the
+    // chart reads as diverging from an axis instead of as bars floating in
+    // whitespace — and it still degrades correctly across a page break,
+    // because each row draws only its own segment.
+    this.page.drawLine({
+      start: { x: centerX, y: this.y },
+      end: { x: centerX, y: this.y - rowHeight },
+      thickness: 0.75,
+      color: RULE_GREY,
+    });
+
+    const barY = this.y - 13;
+
+    const width = maxAbs > 0 ? (barAreaWidth / 2) * Math.min(Math.abs(contribution) / maxAbs, 1) : 0;
+    if (width > 0) {
+      this.page.drawRectangle({
+        x: contribution >= 0 ? centerX : centerX - width,
+        y: barY - BAR_HEIGHT,
+        width,
+        height: BAR_HEIGHT,
+        color,
+      });
+    }
+    this.y -= rowHeight;
   }
 
   private ensureSpace(lineHeight: number) {
@@ -369,6 +537,12 @@ export interface DigestPdfInput {
    * by the public digest, which has no risk level.
    */
   riskLevel?: string;
+  /**
+   * Charts for the paid org report. Omitted by the free public digest, whose
+   * PDF route never supplies it — `renderVisualsBlock` then draws nothing at
+   * all rather than an empty heading.
+   */
+  visuals?: DigestPdfVisuals;
 }
 
 /** Banner fill per risk level. Unknown levels get the neutral grey, never a guess. */
@@ -378,6 +552,27 @@ const RISK_FILL: Record<string, ReturnType<typeof rgb>> = {
   moderate: rgb(0.2, 0.55, 0.75),
   low: rgb(0.16, 0.6, 0.4),
 };
+
+/** Unfilled part of a quorum meter. Light enough that the fill reads as the figure. */
+const METER_TRACK = rgb(0.88, 0.89, 0.91);
+
+/**
+ * Meter fill per quorum status — the same physical colours `RISK_FILL` uses,
+ * so "red" means trouble in both graphics rather than meaning one thing in the
+ * banner and another twenty millimetres below it. `too_early_to_call` is
+ * deliberately the neutral muted ink, not amber: a young vote short of quorum
+ * is not a warning, and colouring it like one would contradict the section
+ * text, which says so in as many words.
+ */
+const QUORUM_STATUS_FILL: Record<QuorumMeterStatus, ReturnType<typeof rgb>> = {
+  met: rgb(0.16, 0.6, 0.4),
+  on_track: rgb(0.2, 0.55, 0.75),
+  at_risk: rgb(0.86, 0.25, 0.25),
+  too_early_to_call: INK_MUTED,
+};
+
+const ATTRIBUTION_POSITIVE = rgb(0.16, 0.6, 0.4);
+const ATTRIBUTION_NEGATIVE = rgb(0.86, 0.25, 0.25);
 
 /** A markdown table row: starts and ends with a pipe. */
 function isTableRow(line: string): boolean {
@@ -424,6 +619,53 @@ function renderTable(layout: Layout, rows: string[][]) {
       layout.drawWrapped(tokenize(`${header[i]}: ${value}`), { x: MARGIN + 26, size: 10 });
     }
   }
+}
+
+/**
+ * The PDF-only "Visual summary": quorum meters, then score-attribution bars.
+ *
+ * FIXED POSITION — after the risk banner, before the markdown body — rather
+ * than interleaved into the matching markdown section. Placing each chart
+ * beside its own section would mean matching on heading text, and a rendering
+ * detail that depends on prose never being reworded is the exact coupling
+ * `fb817aa` refused; the whole point of threading `visuals` explicitly was to
+ * avoid reading the document to decide how to draw it.
+ *
+ * Titled "Visual summary" and not "At a glance": the body's own at-a-glance
+ * table (TODO-076) is the very next thing on the page, and two blocks under
+ * one name would read as a duplicated section.
+ *
+ * Returns with ZERO drawing calls when both arrays are empty, so the free
+ * public digest — which never passes `visuals` — produces the same document
+ * it did before this existed. A test pins that byte-for-byte.
+ */
+function renderVisualsBlock(layout: Layout, visuals: DigestPdfVisuals | undefined) {
+  const meters = visuals?.quorumMeters ?? [];
+  const bars = visuals?.attributionBars ?? [];
+  if (meters.length === 0 && bars.length === 0) return;
+
+  layout.addGap(SECTION_GAP);
+  layout.drawLine('Visual summary', { size: 14, bold: true, gapAfter: 8, color: ACCENT, align: 'center' });
+
+  if (meters.length > 0) {
+    layout.drawLine('Quorum - open votes', { size: 12, bold: true, gapAfter: 6, color: INK_MUTED });
+    for (const m of meters) layout.drawQuorumMeter(m.label, m.pct, m.status);
+  }
+
+  if (bars.length > 0) {
+    layout.addGap(SUBSECTION_GAP);
+    layout.drawLine('Democracy Score - what moved it', {
+      size: 12,
+      bold: true,
+      gapAfter: 6,
+      color: INK_MUTED,
+    });
+    // One scale for the whole chart, so the bars are comparable to each other.
+    const maxAbs = Math.max(...bars.map((b) => Math.abs(b.contribution)));
+    for (const b of bars) layout.drawAttributionBar(b.label, b.contribution, maxAbs);
+  }
+
+  layout.drawRule(14);
 }
 
 function renderBody(layout: Layout, body: string) {
@@ -500,7 +742,13 @@ function renderBody(layout: Layout, body: string) {
   }
 }
 
-export async function renderDigestPdf({ title, weekOfLabel, body, riskLevel }: DigestPdfInput): Promise<Buffer> {
+export async function renderDigestPdf({
+  title,
+  weekOfLabel,
+  body,
+  riskLevel,
+  visuals,
+}: DigestPdfInput): Promise<Buffer> {
   const doc = await PDFDocument.create();
   const fonts: Fonts = {
     regular: await doc.embedFont(StandardFonts.Helvetica),
@@ -522,6 +770,7 @@ export async function renderDigestPdf({ title, weekOfLabel, body, riskLevel }: D
   );
   layout.drawLine(`Week of ${weekOfLabel} — DAO Sentinel`, { size: 10, color: INK_MUTED, gapAfter: 14, align: 'center' });
   if (riskLevel) layout.drawRiskBanner(riskLevel);
+  renderVisualsBlock(layout, visuals);
   renderBody(layout, body);
 
   const bytes = await doc.save();

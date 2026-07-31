@@ -8,6 +8,12 @@ import {
   type OrgReportDao,
   type OrgReportOrganization,
 } from './index';
+import type {
+  AttributionBarInput,
+  QuorumMeterInput,
+  QuorumMeterStatus,
+} from '@/lib/pdf/digest-pdf';
+import type { OrgReportVisuals } from './visuals';
 
 /**
  * TODO-072: persistence for the paid org report.
@@ -71,6 +77,57 @@ export function stripLeadingH1(body: string): string {
   return body.slice(newline + 1).replace(/^\n+/, '');
 }
 
+const EMPTY_VISUALS: OrgReportVisuals = { quorumMeters: [], attributionBars: [] };
+
+const QUORUM_STATUSES: ReadonlySet<string> = new Set<QuorumMeterStatus>([
+  'met',
+  'on_track',
+  'at_risk',
+  'too_early_to_call',
+]);
+
+function isQuorumMeter(m: unknown): m is QuorumMeterInput {
+  if (typeof m !== 'object' || m === null) return false;
+  const r = m as Record<string, unknown>;
+  return (
+    typeof r.label === 'string' &&
+    typeof r.pct === 'number' &&
+    typeof r.status === 'string' &&
+    QUORUM_STATUSES.has(r.status)
+  );
+}
+
+function isAttributionBar(b: unknown): b is AttributionBarInput {
+  if (typeof b !== 'object' || b === null) return false;
+  const r = b as Record<string, unknown>;
+  return typeof r.label === 'string' && typeof r.contribution === 'number';
+}
+
+/**
+ * Reads chart data back out of the untyped `payload` jsonb (TODO-081).
+ *
+ * Every row written before this feature shipped has no `visuals` key at all,
+ * and those rows are still downloadable from the archive — so the legacy shape
+ * is the common case here, not an edge one. Postgres gives no runtime
+ * guarantee about jsonb contents either way, so each entry is validated
+ * individually and anything that fails is DROPPED rather than thrown on: a
+ * missing chart on an old report is a cosmetic gap, a 500 on a paying
+ * customer's PDF download is not.
+ */
+export function parseStoredVisuals(payload: unknown): OrgReportVisuals {
+  if (typeof payload !== 'object' || payload === null) return EMPTY_VISUALS;
+  const raw = (payload as Record<string, unknown>).visuals;
+  if (typeof raw !== 'object' || raw === null) return EMPTY_VISUALS;
+  const r = raw as Record<string, unknown>;
+
+  return {
+    quorumMeters: Array.isArray(r.quorumMeters) ? r.quorumMeters.filter(isQuorumMeter) : [],
+    attributionBars: Array.isArray(r.attributionBars)
+      ? r.attributionBars.filter(isAttributionBar)
+      : [],
+  };
+}
+
 export interface StoredOrgReport {
   id: string;
   title: string;
@@ -82,6 +139,8 @@ export interface StoredOrgReport {
   generatedAt: Date;
   riskLevel: string;
   sentAt: Date | null;
+  /** Chart data for the PDF's "Visual summary" block (TODO-081). Empty for pre-TODO-081 rows. */
+  visuals: OrgReportVisuals;
   /** True when this call computed the report; false when it came from the archive. */
   fresh: boolean;
 }
@@ -104,6 +163,7 @@ function toStored(
     generatedAt: Date;
     riskLevel: string;
     sentAt: Date | null;
+    payload: Record<string, unknown> | null;
   },
   fresh: boolean,
 ): StoredOrgReport {
@@ -116,6 +176,7 @@ function toStored(
     generatedAt: row.generatedAt,
     riskLevel: row.riskLevel,
     sentAt: row.sentAt,
+    visuals: parseStoredVisuals(row.payload),
     fresh,
   };
 }
@@ -128,6 +189,10 @@ const STORED_COLUMNS = {
   generatedAt: orgReports.generatedAt,
   riskLevel: orgReports.riskLevel,
   sentAt: orgReports.sentAt,
+  // Selected for its `visuals` key (TODO-081), which the PDF needs. The
+  // archive-list query below deliberately does NOT select it — that view
+  // renders no charts and the column holds the whole structured report.
+  payload: orgReports.payload,
 } as const;
 
 async function selectStoredForWeek(
@@ -214,12 +279,17 @@ export async function getOrGenerateOrgReport(
     title: generated.title,
     body: generated.body,
     riskLevel: generated.summary.riskLevel,
-    // The structured summary and recommendations, kept so a future archive
-    // list can show risk drivers without re-parsing markdown. The body remains
-    // the source of truth for what the customer was shown.
+    // The structured summary, recommendations and chart data, kept so the PDF
+    // (and a future archive list) can render without re-parsing markdown. The
+    // body remains the source of truth for what the customer was shown.
+    //
+    // `visuals` living here rather than in its own column is what makes
+    // TODO-081 migration-free: this jsonb column already existed and is
+    // already nullable, so old rows simply lack the key.
     payload: {
       summary: generated.summary,
       recommendations: generated.recommendations,
+      visuals: generated.visuals,
     } as unknown as Record<string, unknown>,
   };
 
@@ -273,6 +343,7 @@ export async function getOrGenerateOrgReport(
       generatedAt: now,
       riskLevel: generated.summary.riskLevel,
       sentAt: null,
+      visuals: generated.visuals,
       fresh: true,
     },
     organization,

@@ -68,6 +68,7 @@ import {
   type UpcomingProposalItem,
 } from './upcoming-quorum';
 import { fetchWhaleContext, formatWhaleContextSection, type WhaleContextItem } from './whale-context';
+import { buildOrgReportVisuals, type OrgReportVisuals } from './visuals';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -110,6 +111,12 @@ export interface OrgReport {
   dao: OrgReportDao;
   summary: ExecutiveSummary;
   recommendations: Recommendation[];
+  /**
+   * Chart data for the PDF's "Visual summary" block (TODO-081). Derived from
+   * the same `upcoming`/`attribution` the prose below is built from, and
+   * carried as numbers so the renderer never has to read the document back.
+   */
+  visuals: OrgReportVisuals;
   /** The full document, opening with its own `# ` title line. */
   body: string;
   /**
@@ -414,6 +421,7 @@ export async function generateOrgReport(
     dao,
     summary,
     recommendations,
+    visuals: buildOrgReportVisuals(upcoming, attribution),
     body: composeOrgReportBody(data, { includeTitle: true }),
     bodyWithoutTitle: composeOrgReportBody(data, { includeTitle: false }),
   };

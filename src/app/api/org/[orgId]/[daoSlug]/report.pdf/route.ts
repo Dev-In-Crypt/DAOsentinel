@@ -69,6 +69,10 @@ export async function GET(
     weekOfLabel,
     body: report.bodyWithoutTitle,
     riskLevel: report.riskLevel,
+    // TODO-081: the charts, as numbers rather than recovered from the markdown
+    // above. Empty for reports archived before that shipped, which then render
+    // exactly as they always did.
+    visuals: report.visuals,
   });
 
   const datestamp = report.weekStart.toISOString().slice(0, 10);
