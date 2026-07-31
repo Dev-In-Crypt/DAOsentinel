@@ -1,5 +1,13 @@
 import { describe, it, expect } from 'vitest';
-import { renderDigestPdf, sanitizeForPdf, tokenize, truncateToWidth } from '@/lib/pdf/digest-pdf';
+import {
+  attributionBarScale,
+  renderDigestPdf,
+  sanitizeForPdf,
+  tokenize,
+  truncateToWidth,
+  MIN_ATTRIBUTION_SCALE,
+} from '@/lib/pdf/digest-pdf';
+import { MATERIAL_SCORE_DROP } from '@/server/services/org-report/executive-summary';
 
 describe('renderDigestPdf', () => {
   it('produces a valid PDF buffer for a representative markdown digest body', async () => {
@@ -225,5 +233,57 @@ describe('truncateToWidth (TODO-081)', () => {
     const doc = await PDFDocument.create();
     const font = await doc.embedFont(StandardFonts.Helvetica);
     expect(truncateToWidth(font, 'anything', 10, 1)).toBe('...');
+  });
+});
+
+/**
+ * TODO-084. Live defect: with a single driver, `maxAbs` equalled that driver's
+ * own magnitude, so the ratio was 1.0 by construction and the bar drew at full
+ * width whatever the number was. A real Uniswap report rendered a **+0.02**
+ * contribution — a rounding artifact on a score that moved +0.01 — as a
+ * maximal green bar, while the prose beside it correctly called the move
+ * negligible.
+ */
+describe('attributionBarScale (TODO-084)', () => {
+  it('never scales below the materiality floor, so a lone tiny driver stays tiny', () => {
+    const scale = attributionBarScale([{ label: 'Power distribution', contribution: 0.02 }]);
+    expect(scale).toBe(MIN_ATTRIBUTION_SCALE);
+    // 0.02 against a floor of 2 is 1% of the bar area, not 100%.
+    expect(0.02 / scale).toBeLessThan(0.02);
+  });
+
+  it('uses the largest contribution once it clears the floor', () => {
+    const scale = attributionBarScale([
+      { label: 'Voter participation', contribution: -5 },
+      { label: 'Manipulation resistance', contribution: -2 },
+    ]);
+    expect(scale).toBe(5);
+  });
+
+  it('keeps drivers comparable to each other, not each to itself', () => {
+    const bars = [
+      { label: 'big', contribution: -8 },
+      { label: 'small', contribution: -1 },
+    ];
+    const scale = attributionBarScale(bars);
+    expect(Math.abs(bars[1].contribution) / scale).toBeCloseTo(0.125, 5);
+  });
+
+  it('a lone material driver still fills the bar', () => {
+    expect(attributionBarScale([{ label: 'x', contribution: -7 }])).toBe(7);
+  });
+
+  it('returns the floor for an empty set rather than -Infinity', () => {
+    // Math.max() with no arguments is -Infinity, which would make every width NaN.
+    expect(attributionBarScale([])).toBe(MIN_ATTRIBUTION_SCALE);
+  });
+
+  /**
+   * The floor is not a magic number: it is the same threshold the report uses
+   * to call a score move material at all. This test is the link between the
+   * two, since the renderer cannot import from the server services layer.
+   */
+  it('matches the report\'s own definition of a material score move', () => {
+    expect(MIN_ATTRIBUTION_SCALE).toBe(Math.abs(MATERIAL_SCORE_DROP));
   });
 });

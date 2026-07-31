@@ -347,12 +347,12 @@ class Layout {
    * One attribution bar, diverging from a centre tick — right for a metric
    * that pushed the score up, left for one that pulled it down.
    *
-   * `maxAbs` is the largest |contribution| across the WHOLE chart and is
-   * passed in rather than computed per row, which is what keeps the bars
-   * comparable: scaled individually, a -0.2 and a -5 would draw identically
-   * and the chart would say nothing at all.
+   * `scale` comes from `attributionBarScale` and is shared by every row, which
+   * is what keeps the bars comparable: measured individually, a -0.2 and a -5
+   * would draw identically and the chart would say nothing at all. It also
+   * carries a floor, so one negligible driver on its own cannot fill the bar.
    */
-  drawAttributionBar(label: string, contribution: number, maxAbs: number) {
+  drawAttributionBar(label: string, contribution: number, scale: number) {
     const BAR_HEIGHT = 7;
     const rowHeight = 11 * 1.3 + 10;
     this.ensureSpace(rowHeight);
@@ -389,7 +389,7 @@ class Layout {
 
     const barY = this.y - 13;
 
-    const width = maxAbs > 0 ? (barAreaWidth / 2) * Math.min(Math.abs(contribution) / maxAbs, 1) : 0;
+    const width = scale > 0 ? (barAreaWidth / 2) * Math.min(Math.abs(contribution) / scale, 1) : 0;
     if (width > 0) {
       this.page.drawRectangle({
         x: contribution >= 0 ? centerX : centerX - width,
@@ -574,6 +574,34 @@ const QUORUM_STATUS_FILL: Record<QuorumMeterStatus, ReturnType<typeof rgb>> = {
 const ATTRIBUTION_POSITIVE = rgb(0.16, 0.6, 0.4);
 const ATTRIBUTION_NEGATIVE = rgb(0.86, 0.25, 0.25);
 
+/**
+ * Smallest score move the attribution chart will scale to, in points.
+ *
+ * Without a floor the scale is just the largest |contribution| in the set, so a
+ * chart with ONE driver always drew it at full width — the ratio is 1.0 by
+ * construction. A real report rendered a +0.02 contribution, a rounding
+ * artifact on a score that moved +0.01, as a maximal green bar while the prose
+ * beside it correctly called the move negligible.
+ *
+ * The value is deliberately the same 2 points the report itself uses to call a
+ * score move material at all (`MATERIAL_SCORE_DROP` in
+ * server/services/org-report/executive-summary.ts). It is restated here rather
+ * than imported because this module is `src/lib` and must not depend on the
+ * services layer — a unit test asserts the two stay equal.
+ */
+export const MIN_ATTRIBUTION_SCALE = 2;
+
+/**
+ * The denominator every bar in one chart is measured against, so the bars stay
+ * comparable to each other rather than each filling its own row.
+ *
+ * Returns the floor for an empty set: `Math.max()` with no arguments is
+ * -Infinity, which would make every width NaN.
+ */
+export function attributionBarScale(bars: readonly AttributionBarInput[]): number {
+  return Math.max(...bars.map((b) => Math.abs(b.contribution)), MIN_ATTRIBUTION_SCALE);
+}
+
 /** A markdown table row: starts and ends with a pipe. */
 function isTableRow(line: string): boolean {
   return line.startsWith('|') && line.endsWith('|');
@@ -660,9 +688,10 @@ function renderVisualsBlock(layout: Layout, visuals: DigestPdfVisuals | undefine
       gapAfter: 6,
       color: INK_MUTED,
     });
-    // One scale for the whole chart, so the bars are comparable to each other.
-    const maxAbs = Math.max(...bars.map((b) => Math.abs(b.contribution)));
-    for (const b of bars) layout.drawAttributionBar(b.label, b.contribution, maxAbs);
+    // One scale for the whole chart, floored so a lone negligible driver
+    // cannot draw itself at full width (TODO-084).
+    const scale = attributionBarScale(bars);
+    for (const b of bars) layout.drawAttributionBar(b.label, b.contribution, scale);
   }
 
   layout.drawRule(14);
