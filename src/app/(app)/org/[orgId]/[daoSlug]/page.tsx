@@ -314,9 +314,18 @@ export default async function OrgDaoDashboardPage({
         {unresolvedNotesNotice && (
           <p className="mt-2 text-xs text-[hsl(var(--text-faint))]">{unresolvedNotesNotice}</p>
         )}
+        {/*
+          Says what the reader needs — these are written FOR you, so don't look
+          for an "add note" button — without describing how we do it. The old
+          line offered "added via direct database access for now — there is no
+          in-app authoring UI in this pass": one detail that reads as careless
+          handling of their data, and one phrase ("this pass") that is internal
+          sprint vocabulary. Same class as c3e4e72, which took rule ids out of
+          the report body.
+        */}
         <p className="mt-2 text-xs text-[hsl(var(--text-faint))]">
-          Notes are curated by the DAO Sentinel concierge team and added via direct database
-          access for now — there is no in-app authoring UI in this pass.
+          Notes are written by your DAO Sentinel concierge contact. Ask them to add context on any
+          proposal, alert or address you want tracked here.
         </p>
       </section>
 
