@@ -2,7 +2,9 @@ import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { db } from '@/server/db';
 import { daos, proposals, alerts, scoreHistory } from '@/server/db/schema';
-import { desc, asc, eq, and } from 'drizzle-orm';
+import { desc, asc, eq, and, gt } from 'drizzle-orm';
+import { countStaleActiveProposals } from '@/server/services/org-report/upcoming-quorum';
+import { isStaleActive } from '@/lib/proposal-status';
 import { Badge } from '@/components/ui/badge';
 import { ScoreGauge } from '@/components/charts/ScoreGauge';
 import { ScoreTrend } from '@/components/charts/ScoreTrend';
@@ -48,11 +50,24 @@ export default async function DaoProfilePage({ params }: { params: Promise<{ slu
   const [dao] = await db.select().from(daos).where(eq(daos.slug, slug)).limit(1);
   if (!dao) notFound();
 
-  const [active, recent, recentAlerts, history, allDaos] = await Promise.all([
+  // One clock for the whole page, so the list, the excluded count and the
+  // badges below cannot disagree about what is still open.
+  const now = new Date();
+
+  const [active, recent, recentAlerts, history, allDaos, staleActiveCount] = await Promise.all([
     db
       .select()
       .from(proposals)
-      .where(and(eq(proposals.daoId, dao.id), eq(proposals.state, 'active')))
+      // `endTimestamp > now` matters: a vote the sync has not closed yet was
+      // being listed under "Active proposals" reading "ended". Same condition
+      // `fetchUpcomingWithQuorum` applies (TODO-047).
+      .where(
+        and(
+          eq(proposals.daoId, dao.id),
+          eq(proposals.state, 'active'),
+          gt(proposals.endTimestamp, now),
+        ),
+      )
       .orderBy(desc(proposals.endTimestamp))
       .limit(10),
     db
@@ -74,6 +89,9 @@ export default async function DaoProfilePage({ params }: { params: Promise<{ slu
       .orderBy(asc(scoreHistory.computedAt))
       .limit(90),
     db.select({ slug: daos.slug, name: daos.name }).from(daos).orderBy(asc(daos.name)),
+    // What the deadline filter dropped — shown rather than silently omitted,
+    // so a lagging sync is visible instead of looking like a quiet week.
+    countStaleActiveProposals(dao.id, now),
   ]);
 
   const breakdown = (dao.scoreBreakdown ?? {}) as Record<string, number>;
@@ -185,6 +203,15 @@ export default async function DaoProfilePage({ params }: { params: Promise<{ slu
               No active proposals.
             </div>
           )}
+          {staleActiveCount > 0 && (
+            <p className="text-xs text-[hsl(var(--text-dim))]">
+              {staleActiveCount}{' '}
+              {staleActiveCount === 1
+                ? 'proposal still flagged active past its deadline was'
+                : 'proposals still flagged active past their deadline were'}{' '}
+              excluded — awaiting the next sync.
+            </p>
+          )}
           {active.map((p) => (
             <Link key={p.id} href={`/proposals/${p.id}`} className="group">
               <div className="glass-card space-y-2 py-4">
@@ -226,7 +253,14 @@ export default async function DaoProfilePage({ params }: { params: Promise<{ slu
               >
                 <div className="flex items-center justify-between gap-3">
                   <div className="line-clamp-1 font-medium">{p.title}</div>
-                  <Badge variant={p.state === 'active' ? 'success' : 'secondary'}>{p.state}</Badge>
+                  {/* `ended` rather than the stale `active` — otherwise this
+                      list contradicts the panel above, which has already
+                      excluded the same proposal. */}
+                  {isStaleActive(p.state, p.endTimestamp, now) ? (
+                    <Badge variant="secondary">ended</Badge>
+                  ) : (
+                    <Badge variant={p.state === 'active' ? 'success' : 'secondary'}>{p.state}</Badge>
+                  )}
                 </div>
                 <div className="mt-1 text-xs mono text-[hsl(var(--text-dim))]">
                   {timeAgo(p.createdAt)} · {formatNumber(p.votesCount ?? 0)} votes

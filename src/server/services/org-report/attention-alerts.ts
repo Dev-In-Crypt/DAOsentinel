@@ -30,6 +30,7 @@ import { and, desc, eq, gt, inArray, sql } from 'drizzle-orm';
 import { db } from '../../db';
 import { alerts, proposals } from '../../db/schema';
 import { normalizeProposalTitle, shortenAddress } from '@/lib/utils';
+import { hasVotingClosed } from '@/lib/proposal-status';
 
 /** Every alert type any service currently inserts. */
 export const ATTENTION_ALERT_TYPES = [
@@ -86,6 +87,16 @@ export interface AttentionAlert {
   participants: string;
   /** Voting deadline of the linked proposal; null for DAO-level alerts. */
   deadline: Date | null;
+  /**
+   * Whether that deadline had already passed when the report was generated.
+   *
+   * An alert is a record of the moment it fired, but the report is written
+   * later — on a Friday first view, a Monday quorum warning can be five days
+   * stale. Without this the section printed "Deadline: <past date>" next to
+   * advice about acting before the vote closes. False for DAO-level alerts,
+   * which have no deadline to pass.
+   */
+  deadlinePassed: boolean;
   proposalTitle: string | null;
   createdAt: Date;
   /** Lowercased voter address for `whale_vote`; null for every other type. */
@@ -187,7 +198,21 @@ const NO_INDIVIDUALS_DAO =
  * the part of the section a paying customer is actually buying, so it says
  * what the signal implies operationally rather than restating the numbers.
  */
-function whyItMattersFor(type: string): string {
+function whyItMattersFor(type: string, closed = false): string {
+  // Two of these types tell the reader to act before the vote closes. Once it
+  // HAS closed that advice is not merely useless, it is wrong — so they get a
+  // retrospective variant. The other three are already written in past tense
+  // (a swing that happened, a cluster that voted, a score that fell) and read
+  // correctly either way.
+  if (closed) {
+    switch (type) {
+      case 'whale_vote':
+        return 'This vote has closed, so the outcome is fixed and there is no counterparty left to engage. What is still worth recording is who decided it, and whether one address holding this share of the vote is expected for this DAO or is something to raise before the next proposal of the same kind.';
+      case 'quorum_risk':
+        return 'This vote has closed, so no turnout push can change it now. The value left in it is the pattern: which proposals keep coming up short on turnout, and whether delegate outreach started early enough to have made a difference if it had run.';
+    }
+  }
+
   switch (type) {
     case 'whale_vote':
       return 'A single address holding this share of voting power can carry or sink the proposal on its own, which means the outcome is decided by one counterparty rather than by turnout. If their position differs from yours, the window to engage them is before voting closes — after that the result is fixed.';
@@ -268,9 +293,12 @@ function participantsFor(row: AttentionAlertRow): string {
  * never throws: `whatHappened` falls back to the alert title when the
  * detector wrote an empty description, and every `data` read is narrowed.
  */
-export function describeAlert(row: AttentionAlertRow): AttentionAlert {
+export function describeAlert(row: AttentionAlertRow, now: Date = new Date()): AttentionAlert {
   const description = typeof row.description === 'string' ? row.description.trim() : '';
   const title = typeof row.title === 'string' && row.title.trim() !== '' ? row.title : 'Alert';
+  // Only proposal-linked alerts carry a deadline; `score_drop` never does.
+  const deadline = row.proposalId ? row.proposalEndsAt : null;
+  const deadlinePassed = hasVotingClosed(deadline, now);
 
   return {
     id: row.id,
@@ -278,10 +306,10 @@ export function describeAlert(row: AttentionAlertRow): AttentionAlert {
     severity: row.severity,
     title,
     whatHappened: description !== '' ? description : title,
-    whyItMatters: whyItMattersFor(row.type),
+    whyItMatters: whyItMattersFor(row.type, deadlinePassed),
     participants: participantsFor(row),
-    // Only proposal-linked alerts carry a deadline; `score_drop` never does.
-    deadline: row.proposalId ? row.proposalEndsAt : null,
+    deadline,
+    deadlinePassed,
     proposalTitle: row.proposalId ? row.proposalTitle : null,
     createdAt: row.createdAt,
     voter: row.type === 'whale_vote' ? readString(asRecord(row.data), 'voter')?.toLowerCase() ?? null : null,
@@ -314,9 +342,12 @@ function createdAtMs(value: Date): number {
  */
 export const MAX_WHALE_ALERTS_PER_PROPOSAL = 2;
 
-export function describeAlerts(rows: AttentionAlertRow[]): AttentionAlert[] {
+export function describeAlerts(
+  rows: AttentionAlertRow[],
+  now: Date = new Date(),
+): AttentionAlert[] {
   const sorted = rows
-    .map(describeAlert)
+    .map((row) => describeAlert(row, now))
     .sort(
       (a, b) =>
         severityRank(a.severity) - severityRank(b.severity) ||
@@ -444,11 +475,25 @@ export function formatAttentionAlertsSection(items: AttentionAlert[]): string {
     .sort(([a], [b]) => rank(a) - rank(b))
     .map(([type, group]) => {
       const heading = TYPE_HEADINGS[type] ?? type.replace(/_/g, ' ');
+      // Still-open votes lead their group: those are the ones the reader can
+      // still do something about.
+      const ordered = [
+        ...group.filter((a) => !a.deadlinePassed),
+        ...group.filter((a) => a.deadlinePassed),
+      ];
+      // The preamble is printed once for the whole group, so it can only claim
+      // the vote has closed when EVERY item in it has. A mixed group keeps the
+      // forward-looking text — correct for its open items — while each closed
+      // item still carries its own explicit "Closed:" line.
+      const allClosed = ordered.every((a) => a.deadlinePassed);
+      const preamble = allClosed
+        ? whyItMattersFor(type, true)
+        : ordered[0].whyItMatters;
       const lines = [
-        `### ${heading} (${group.length})`,
-        `_${group[0].whyItMatters}_`,
+        `### ${heading}${allClosed ? ' — already closed' : ''} (${ordered.length})`,
+        `_${preamble}_`,
         '',
-        ...group.map(formatAlertItem),
+        ...ordered.map(formatAlertItem),
       ];
       return lines.join('\n');
     });
@@ -474,7 +519,14 @@ function formatAlertItem(a: AttentionAlert): string {
   }
   // Omitted entirely for DAO-level alerts — an empty "Deadline:" line reads
   // like missing data rather than "there is no deadline".
-  if (a.deadline) lines.push(`  - **Deadline:** ${a.deadline.toISOString().slice(0, 10)}`);
+  if (a.deadline) {
+    const day = a.deadline.toISOString().slice(0, 10);
+    lines.push(
+      a.deadlinePassed
+        ? `  - **Closed:** ${day} — voting had already ended when this report was generated.`
+        : `  - **Deadline:** ${day}`,
+    );
+  }
   return lines.join('\n');
 }
 
@@ -536,5 +588,5 @@ export async function buildAttentionAlertsSection(
   weekOf = new Date(),
 ): Promise<string> {
   const rows = await fetchAttentionAlerts(daoId, weekOf);
-  return formatAttentionAlertsSection(describeAlerts(rows));
+  return formatAttentionAlertsSection(describeAlerts(rows, weekOf));
 }

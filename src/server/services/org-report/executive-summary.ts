@@ -105,7 +105,15 @@ export interface ExecutiveSummaryScore {
 export interface ExecutiveSummaryInput {
   organizationName: string;
   daoName: string;
-  weekOf: Date;
+  /**
+   * Monday 00:00 UTC of the week the report is FILED under — not the instant
+   * it was generated. It is used for one thing: the week the document prints
+   * on itself. Passing the generation instant here is what made a report
+   * stored as week 2026-07-27 title itself "week of 2026-07-31" while its own
+   * PDF subtitle, filename and archive row said the 27th (TODO-082). Named
+   * for what it must be so a caller cannot pass `now` without noticing.
+   */
+  weekStart: Date;
   upcoming?: readonly UpcomingProposalItem[];
   whales?: readonly WhaleContextItem[];
   alerts?: readonly AttentionAlert[];
@@ -116,7 +124,12 @@ export interface ExecutiveSummaryInput {
 export interface ExecutiveSummary {
   organizationName: string;
   daoName: string;
-  /** `YYYY-MM-DD`. */
+  /**
+   * `YYYY-MM-DD` — the Monday of the ISO week this report is filed under, the
+   * same value as `org_reports.week_start`. Field name kept (it is persisted
+   * inside `payload.summary`), but it is a week label, never a timestamp of
+   * when the report ran; the page and the PDF show that separately.
+   */
   weekOf: string;
   riskLevel: ReportRiskLevel;
   /** Every condition that fired, highest level first. Empty iff `riskLevel` is `low`. */
@@ -548,7 +561,7 @@ export function buildExecutiveSummary(input: ExecutiveSummaryInput): ExecutiveSu
   return {
     organizationName: input.organizationName,
     daoName: input.daoName,
-    weekOf: isoDay(input.weekOf),
+    weekOf: isoDay(input.weekStart),
     riskLevel: riskLevelFromDrivers(drivers),
     drivers,
     keyEvents: buildKeyEvents(input),
@@ -611,7 +624,7 @@ export function renderDeterministicSummary(summary: ExecutiveSummary): string {
       c.actionableAlerts,
       'actionable alert',
       'actionable alerts',
-    )} and ${plural(c.whaleVotes, 'whale vote', 'whale votes')} for the week ending ${summary.weekOf}.`,
+    )} and ${plural(c.whaleVotes, 'whale vote', 'whale votes')} for the week of ${summary.weekOf}.`,
   );
 
   if (c.quorumAtRisk > 0) {

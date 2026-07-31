@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
-import { desc, asc, eq, and } from 'drizzle-orm';
+import { desc, asc, eq, and, gt } from 'drizzle-orm';
+import { countStaleActiveProposals } from '@/server/services/org-report/upcoming-quorum';
 import { auth } from '@/server/auth';
 import { db } from '@/server/db';
 import { daos, proposals, alerts, scoreHistory, users } from '@/server/db/schema';
@@ -74,11 +75,22 @@ export async function GET(
     return new NextResponse('Not found', { status: 404 });
   }
 
-  const [active, recent, recentAlerts, history, curatedNotes] = await Promise.all([
+  // One clock, matching the dashboard this export mirrors.
+  const now = new Date();
+
+  const [active, recent, recentAlerts, history, curatedNotes, staleActiveCount] = await Promise.all([
     db
       .select()
       .from(proposals)
-      .where(and(eq(proposals.daoId, dao.id), eq(proposals.state, 'active')))
+      // Same deadline filter as the dashboard: a vote whose window has closed
+      // is not an active proposal, whatever the un-synced `state` column says.
+      .where(
+        and(
+          eq(proposals.daoId, dao.id),
+          eq(proposals.state, 'active'),
+          gt(proposals.endTimestamp, now),
+        ),
+      )
       .orderBy(desc(proposals.endTimestamp))
       .limit(10),
     db
@@ -102,13 +114,17 @@ export async function GET(
     // TODO-069: the dashboard page's identical call — DAO-scoped notes with
     // the same subject resolution and the same excluded-note policy.
     fetchOrgNotesForDao(organization.id, dao.id),
+    // Same count the dashboard prints under its Active proposals panel, so a
+    // reader reconciling the CSV against the screen sees the same number.
+    countStaleActiveProposals(dao.id, now),
   ]);
 
   const csv = formatOrgReportCsv({
     organizationName: organization.brandingDisplayName ?? organization.name,
     daoName: dao.name,
     daoSlug: dao.slug,
-    generatedAt: new Date(),
+    generatedAt: now,
+    staleActiveCount,
     activeProposals: active.map((p) => ({
       title: p.title,
       state: p.state,

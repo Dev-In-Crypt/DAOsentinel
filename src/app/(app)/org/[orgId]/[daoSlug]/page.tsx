@@ -1,11 +1,13 @@
 import Link from 'next/link';
 import { notFound, redirect } from 'next/navigation';
-import { desc, asc, eq, and } from 'drizzle-orm';
+import { desc, asc, eq, and, gt } from 'drizzle-orm';
 import { auth } from '@/server/auth';
 import { db } from '@/server/db';
 import { daos, proposals, alerts, scoreHistory, users } from '@/server/db/schema';
 import { requireOrgAccess } from '@/server/api/org-auth';
 import { fetchOrgNotesForDao, formatUnresolvedNotesNotice } from '@/server/api/org-notes';
+import { countStaleActiveProposals } from '@/server/services/org-report/upcoming-quorum';
+import { isStaleActive } from '@/lib/proposal-status';
 import { Badge } from '@/components/ui/badge';
 import { ScoreGauge } from '@/components/charts/ScoreGauge';
 import { ScoreTrend } from '@/components/charts/ScoreTrend';
@@ -80,11 +82,24 @@ export default async function OrgDaoDashboardPage({
   // src/lib/priority-sync-badge.ts for why `scoreUpdatedAt` is not used).
   const showPrioritySyncBadge = shouldShowPrioritySyncBadge(organization);
 
-  const [active, recent, recentAlerts, history, curatedNotes] = await Promise.all([
+  // The clock for every "is this still open" decision on this page, read once
+  // so the list, the excluded count and the badges cannot disagree.
+  const now = new Date();
+
+  const [active, recent, recentAlerts, history, curatedNotes, staleActiveCount] = await Promise.all([
     db
       .select()
       .from(proposals)
-      .where(and(eq(proposals.daoId, dao.id), eq(proposals.state, 'active')))
+      // `endTimestamp > now` is load-bearing: without it a vote the sync has
+      // not closed yet is listed under ACTIVE PROPOSALS reading "ended".
+      // Same condition `fetchUpcomingWithQuorum` applies (TODO-047).
+      .where(
+        and(
+          eq(proposals.daoId, dao.id),
+          eq(proposals.state, 'active'),
+          gt(proposals.endTimestamp, now),
+        ),
+      )
       .orderBy(desc(proposals.endTimestamp))
       .limit(10),
     db
@@ -110,6 +125,10 @@ export default async function OrgDaoDashboardPage({
     // row (see src/server/api/org-notes.ts). The CSV export calls the exact
     // same helper.
     fetchOrgNotesForDao(organization.id, dao.id),
+    // What the deadline filter above dropped. Surfaced rather than silently
+    // shortening the list — a non-zero count means the sync is lagging, which
+    // is signal, not noise. Same helper the weekly report uses.
+    countStaleActiveProposals(dao.id, now),
   ]);
 
   const notes = curatedNotes.notes;
@@ -310,6 +329,15 @@ export default async function OrgDaoDashboardPage({
               No active proposals.
             </div>
           )}
+          {staleActiveCount > 0 && (
+            <p className="text-xs text-[hsl(var(--text-dim))]">
+              {staleActiveCount}{' '}
+              {staleActiveCount === 1
+                ? 'proposal still flagged active past its deadline was'
+                : 'proposals still flagged active past their deadline were'}{' '}
+              excluded — awaiting the next sync.
+            </p>
+          )}
           {active.map((p) => (
             <Link key={p.id} href={`/proposals/${p.id}`} className="group">
               <div className="glass-card space-y-2 py-4">
@@ -351,7 +379,14 @@ export default async function OrgDaoDashboardPage({
               >
                 <div className="flex items-center justify-between gap-3">
                   <div className="line-clamp-1 font-medium">{p.title}</div>
-                  <Badge variant={p.state === 'active' ? 'success' : 'secondary'}>{p.state}</Badge>
+                  {/* `ended`, not the raw `active` the sync has not updated
+                      yet — otherwise this list contradicts the panel above,
+                      which has already excluded the same proposal. */}
+                  {isStaleActive(p.state, p.endTimestamp, now) ? (
+                    <Badge variant="secondary">ended</Badge>
+                  ) : (
+                    <Badge variant={p.state === 'active' ? 'success' : 'secondary'}>{p.state}</Badge>
+                  )}
                 </div>
                 <div className="mt-1 text-xs mono text-[hsl(var(--text-dim))]">
                   {timeAgo(p.createdAt)} · {formatNumber(p.votesCount ?? 0)} votes

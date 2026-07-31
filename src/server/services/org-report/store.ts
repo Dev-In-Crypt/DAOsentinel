@@ -8,6 +8,7 @@ import {
   type OrgReportDao,
   type OrgReportOrganization,
 } from './index';
+import { startOfIsoWeekUtc } from './week';
 import type {
   AttributionBarInput,
   QuorumMeterInput,
@@ -37,26 +38,12 @@ const MS_PER_DAY = 86_400_000;
 export const ORG_REPORT_HISTORY_LIMIT = 26;
 
 /**
- * Floors an instant to Monday 00:00:00.000 UTC of the week containing it.
- *
- * UTC throughout, deliberately: the server's local zone is not the customer's,
- * and a local-time floor would put the same instant in different weeks
- * depending on where the process runs — which, against a UNIQUE index, means
- * two rows for one week.
- *
- * `getUTCDay()` is 0 for Sunday, so Sunday floors back six days, not forward.
+ * Re-exported from ./week, which is where it now lives so that `index.ts` can
+ * use it for the report's own title without importing back from this module
+ * (this one already imports from `index.ts`, so that would be a cycle).
+ * Existing callers and tests keep this import path.
  */
-export function startOfIsoWeekUtc(instant: Date): Date {
-  const day = instant.getUTCDay();
-  const daysSinceMonday = (day + 6) % 7;
-  return new Date(
-    Date.UTC(
-      instant.getUTCFullYear(),
-      instant.getUTCMonth(),
-      instant.getUTCDate() - daysSinceMonday,
-    ),
-  );
-}
+export { startOfIsoWeekUtc };
 
 /**
  * Removes the leading `# ` title line from a stored body.

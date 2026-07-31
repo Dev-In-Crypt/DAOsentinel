@@ -69,6 +69,7 @@ import {
 } from './upcoming-quorum';
 import { fetchWhaleContext, formatWhaleContextSection, type WhaleContextItem } from './whale-context';
 import { buildOrgReportVisuals, type OrgReportVisuals } from './visuals';
+import { startOfIsoWeekUtc } from './week';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -132,7 +133,10 @@ export interface OrgReport {
 export interface OrgReportSectionData {
   organizationDisplayName: string;
   daoName: string;
+  /** The instant the report describes — the right edge of every data window. */
   weekOf: Date;
+  /** Monday 00:00 UTC of the week it is filed under — the label, and only the label. */
+  weekStart: Date;
   summary: ExecutiveSummary;
   /** Already resolved: deterministic text, or model prose that passed `proseIsSafe`. */
   summaryProse: string;
@@ -158,8 +162,21 @@ export interface OrgReportSectionData {
  * artifact that arrives under the same headline as the free newsletter reads
  * like the free newsletter.
  */
-export function orgReportTitle(organizationDisplayName: string, daoName: string, weekOf: Date): string {
-  return `${organizationDisplayName} — ${daoName} governance report — week of ${weekOf
+/**
+ * Titled by the ISO WEEK, never by the generation instant.
+ *
+ * The two are the same only when the Monday cron generates the report. On any
+ * ad-hoc first view — a customer opening the page on a Friday — they differ,
+ * and the document used to announce "week of 2026-07-31" while its own PDF
+ * subtitle, its filename and its archive row all read 2026-07-27 (TODO-082).
+ * When the report ran is shown separately, next to the week range.
+ */
+export function orgReportTitle(
+  organizationDisplayName: string,
+  daoName: string,
+  weekStart: Date,
+): string {
+  return `${organizationDisplayName} — ${daoName} governance report — week of ${weekStart
     .toISOString()
     .slice(0, 10)}`;
 }
@@ -263,7 +280,7 @@ export function composeOrgReportBody(
   const { includeTitle = true } = opts;
 
   const title = includeTitle
-    ? `# ${orgReportTitle(data.organizationDisplayName, data.daoName, data.weekOf)}`
+    ? `# ${orgReportTitle(data.organizationDisplayName, data.daoName, data.weekStart)}`
     : '';
 
   const body = [
@@ -348,6 +365,11 @@ export async function generateOrgReport(
   opts: GenerateOrgReportOptions = {},
 ): Promise<OrgReport> {
   const weekOf = opts.weekOf ?? new Date();
+  // The label. `weekOf` stays the data instant — every fetch below still reads
+  // the 7 days ending at it — but everything the document PRINTS about which
+  // week it is comes from here, so the title cannot disagree with the row's
+  // `week_start`, the PDF subtitle, the filename or the archive list.
+  const weekStart = startOfIsoWeekUtc(weekOf);
 
   const [organization, dao] = await Promise.all([
     loadOrganization(organizationId),
@@ -363,7 +385,10 @@ export async function generateOrgReport(
     fetchOrgNotesForDao(organizationId, dao.id),
   ]);
 
-  const alerts = describeAlerts(alertRows);
+  // `weekOf` is the report's instant, so an alert whose proposal closed
+  // between firing and generation is rendered as closed rather than as
+  // something the reader can still act on.
+  const alerts = describeAlerts(alertRows, weekOf);
 
   // Identity lookup runs after the alerts/whales fetch because it needs the
   // addresses those produced, and before the recommendations because the
@@ -388,7 +413,7 @@ export async function generateOrgReport(
   const summary = buildExecutiveSummary({
     organizationName: organization.displayName,
     daoName: dao.name,
-    weekOf,
+    weekStart,
     upcoming,
     whales,
     alerts,
@@ -402,6 +427,7 @@ export async function generateOrgReport(
     daoName: dao.name,
     identities,
     weekOf,
+    weekStart,
     summary,
     summaryProse,
     recommendations,
@@ -415,7 +441,7 @@ export async function generateOrgReport(
   };
 
   return {
-    title: orgReportTitle(organization.displayName, dao.name, weekOf),
+    title: orgReportTitle(organization.displayName, dao.name, weekStart),
     weekOf,
     organization,
     dao,

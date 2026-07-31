@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
-  describeAlert,
-  describeAlerts,
+  describeAlert as describeAlertAt,
+  describeAlerts as describeAlertsAt,
   formatAttentionAlertsSection,
   ATTENTION_ALERT_TYPES,
   ACTIONABLE_SEVERITIES,
@@ -14,6 +14,18 @@ import {
  * the split in the module under test (fetchAttentionAlerts is the only
  * function that touches Drizzle).
  */
+
+/**
+ * A fixed clock, BEFORE the fixture's 2026-08-01 deadline.
+ *
+ * These assertions are about the still-open wording, and the functions now
+ * default `now` to the real clock — so without pinning it every expectation
+ * here would silently flip to the closed variant once that date passed, which
+ * is a test that breaks on a calendar rather than on a code change.
+ */
+const NOW = new Date('2026-07-25T00:00:00.000Z');
+const describeAlert = (r: AttentionAlertRow) => describeAlertAt(r, NOW);
+const describeAlerts = (rows: AttentionAlertRow[]) => describeAlertsAt(rows, NOW);
 
 const CHOICES = ['For', 'Against', 'Abstain'];
 
@@ -516,5 +528,78 @@ describe('clone collapsing (TODO-075)', () => {
       row({ id: 'q2', type: 'quorum_risk', data: {}, proposalTitle: CLONES[1], proposalId: 'p2' }),
     ]);
     expect(out).toHaveLength(2);
+  });
+});
+
+/**
+ * The live-walkthrough defect: a report generated 2026-07-31 printed
+ * "Deadline: 2026-07-26" for a quorum warning, under a preamble telling the
+ * reader that turnout outreach "needs lead time before the deadline". The vote
+ * had closed five days earlier.
+ */
+describe('alerts whose vote has already closed', () => {
+  const AFTER = new Date('2026-08-05T00:00:00.000Z'); // past the 2026-08-01 fixture deadline
+
+  it('marks the alert as closed', () => {
+    expect(describeAlertAt(row({ type: 'quorum_risk' }), AFTER).deadlinePassed).toBe(true);
+  });
+
+  it('leaves a still-open vote unmarked', () => {
+    expect(describeAlertAt(row({ type: 'quorum_risk' }), NOW).deadlinePassed).toBe(false);
+  });
+
+  it('never marks a DAO-level alert, which has no deadline to pass', () => {
+    const a = describeAlertAt(
+      row({ type: 'score_drop', proposalId: null, proposalEndsAt: null }),
+      AFTER,
+    );
+    expect(a.deadline).toBeNull();
+    expect(a.deadlinePassed).toBe(false);
+  });
+
+  it('drops the act-before-it advice once the vote is closed', () => {
+    const open = describeAlertAt(row({ type: 'quorum_risk' }), NOW).whyItMatters;
+    const closed = describeAlertAt(row({ type: 'quorum_risk' }), AFTER).whyItMatters;
+    expect(open).toContain('lead time before the deadline');
+    expect(closed).not.toContain('lead time before the deadline');
+    expect(closed).toContain('has closed');
+  });
+
+  it('does the same for a whale vote', () => {
+    const closed = describeAlertAt(row({ type: 'whale_vote' }), AFTER).whyItMatters;
+    expect(closed).not.toContain('window to engage them is before voting closes');
+    expect(closed).toContain('outcome is fixed');
+  });
+
+  it('renders "Closed:" instead of "Deadline:" in the section', () => {
+    const section = formatAttentionAlertsSection(
+      describeAlertsAt([row({ type: 'quorum_risk' })], AFTER),
+    );
+    expect(section).toContain('**Closed:** 2026-08-01');
+    expect(section).not.toContain('**Deadline:**');
+    expect(section).toContain('already closed');
+  });
+
+  it('keeps the forward-looking preamble when the group still has an open vote', () => {
+    const stillOpen = row({
+      id: 'q-open',
+      type: 'quorum_risk',
+      proposalId: 'p-open',
+      proposalEndsAt: new Date('2026-08-20T00:00:00.000Z'),
+    });
+    const alreadyClosed = row({ id: 'q-closed', type: 'quorum_risk', proposalId: 'p-closed' });
+    const section = formatAttentionAlertsSection(
+      describeAlertsAt([alreadyClosed, stillOpen], AFTER),
+    );
+    // Mixed group: the heading must not claim everything is closed, the
+    // preamble stays actionable, and the closed item still says so itself.
+    expect(section).not.toContain('already closed');
+    expect(section).toContain('lead time before the deadline');
+    expect(section).toContain('**Closed:** 2026-08-01');
+    expect(section).toContain('**Deadline:** 2026-08-20');
+    // The open vote leads its group.
+    expect(section.indexOf('**Deadline:** 2026-08-20')).toBeLessThan(
+      section.indexOf('**Closed:** 2026-08-01'),
+    );
   });
 });

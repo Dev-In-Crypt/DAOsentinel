@@ -191,3 +191,27 @@ describe('formatOrgReportCsv', () => {
     );
   });
 });
+
+describe('excluded stale-active proposals (TODO-082)', () => {
+  it('reports how many rows the deadline filter dropped', () => {
+    const csv = formatOrgReportCsv(baseInput({ staleActiveCount: 2 }));
+    expect(csv).toContain(
+      '2 proposals still flagged active past their deadline were excluded — awaiting the next sync.',
+    );
+  });
+
+  it('uses the singular for one', () => {
+    expect(formatOrgReportCsv(baseInput({ staleActiveCount: 1 }))).toContain(
+      '1 proposal still flagged active past its deadline was excluded',
+    );
+  });
+
+  it('says nothing at all when none were dropped', () => {
+    // Zero and omitted must render identically — a "0 excluded" line would be
+    // noise on every healthy export.
+    expect(formatOrgReportCsv(baseInput({ staleActiveCount: 0 }))).toBe(
+      formatOrgReportCsv(baseInput()),
+    );
+    expect(formatOrgReportCsv(baseInput())).not.toContain('awaiting the next sync');
+  });
+});

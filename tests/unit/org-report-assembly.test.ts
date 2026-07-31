@@ -6,6 +6,7 @@ import {
   orgReportTitle,
   type OrgReportSectionData,
 } from '@/server/services/org-report';
+import { startOfIsoWeekUtc } from '@/server/services/org-report/week';
 import {
   buildExecutiveSummary,
   renderDeterministicSummary,
@@ -35,6 +36,7 @@ const BUSY_ALERTS: AttentionAlert[] = [
       'A single address holding this share of voting power can carry or sink the proposal on its own.',
     participants: '0x1234…cdef — 21.4% of voting power — voted "For"',
     deadline: DEADLINE,
+    deadlinePassed: false,
     proposalTitle: 'Fee switch activation',
     createdAt: new Date('2026-07-04T10:00:00Z'),
     voter: '0x123400000000000000000000000000000000cdef',
@@ -51,6 +53,7 @@ const BUSY_ALERTS: AttentionAlert[] = [
     whyItMatters: 'Late flips produce outcomes the community did not have time to respond to.',
     participants: 'Leading choice flipped from "Against" to "For"',
     deadline: new Date('2026-07-05T00:00:00Z'),
+    deadlinePassed: false,
     proposalTitle: 'Grants round 12',
     voter: null,
     normalizedTitle: 'Grants round 12',
@@ -190,7 +193,7 @@ function busyData(): OrgReportSectionData {
   const summary = buildExecutiveSummary({
     organizationName: 'Acme Governance',
     daoName: 'Uniswap',
-    weekOf: WEEK_OF,
+    weekStart: WEEK_OF,
     upcoming: BUSY_UPCOMING,
     whales: BUSY_WHALES,
     alerts: BUSY_ALERTS,
@@ -203,6 +206,7 @@ function busyData(): OrgReportSectionData {
     daoName: 'Uniswap',
     identities: new Map(),
     weekOf: WEEK_OF,
+    weekStart: WEEK_OF,
     summary,
     summaryProse: renderDeterministicSummary(summary),
     recommendations,
@@ -221,7 +225,7 @@ function emptyData(): OrgReportSectionData {
   const summary = buildExecutiveSummary({
     organizationName: 'Acme Governance',
     daoName: 'Uniswap',
-    weekOf: WEEK_OF,
+    weekStart: WEEK_OF,
     recommendations,
   });
   return {
@@ -229,6 +233,7 @@ function emptyData(): OrgReportSectionData {
     daoName: 'Uniswap',
     identities: new Map(),
     weekOf: WEEK_OF,
+    weekStart: WEEK_OF,
     summary,
     summaryProse: renderDeterministicSummary(summary),
     recommendations,
@@ -250,6 +255,35 @@ describe('orgReportTitle', () => {
     const title = orgReportTitle('Acme Governance', 'Uniswap', WEEK_OF);
     expect(title).toBe('Acme Governance — Uniswap governance report — week of 2026-07-06');
     expect(title).not.toContain('DAO Sentinel Weekly');
+  });
+
+  /**
+   * TODO-082. A report first opened mid-week used to title itself with the
+   * generation date while its stored `week_start`, its PDF subtitle, its
+   * filename and its archive row all carried the Monday — one document
+   * claiming two different weeks.
+   */
+  it('labels the body by the ISO week, not by the day it was generated', () => {
+    const generatedOnFriday = new Date('2026-07-10T14:32:00Z');
+    const weekStart = startOfIsoWeekUtc(generatedOnFriday);
+    expect(weekStart.toISOString().slice(0, 10)).toBe('2026-07-06');
+
+    const summary = buildExecutiveSummary({
+      organizationName: 'Acme Governance',
+      daoName: 'Uniswap',
+      weekStart,
+    });
+
+    const body = composeOrgReportBody({
+      ...busyData(),
+      weekOf: generatedOnFriday,
+      weekStart,
+      summary,
+      summaryProse: renderDeterministicSummary(summary),
+    });
+
+    expect(body).toContain('week of 2026-07-06');
+    expect(body).not.toContain('2026-07-10');
   });
 });
 
@@ -337,7 +371,7 @@ describe('composeOrgReportBody — an empty week', () => {
 
   it('says what was reviewed, so "nothing happened" is a result and not a failure', () => {
     expect(body).toContain('Reviewed 0 open votes');
-    expect(body).toContain('week ending 2026-07-06');
+    expect(body).toContain('week of 2026-07-06');
   });
 });
 

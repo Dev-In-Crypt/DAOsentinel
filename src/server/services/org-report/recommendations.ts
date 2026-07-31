@@ -39,6 +39,7 @@ import type { AttentionAlert } from './attention-alerts';
 import type { MetricContribution, ScoreAttribution, ScoreMetric } from './score-attribution';
 import type { UpcomingProposalItem } from './upcoming-quorum';
 import type { WhaleContextItem } from './whale-context';
+import { startOfIsoWeekUtc } from './week';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -722,7 +723,11 @@ function noActionNeeded(input: RecommendationInput, now: Date): Recommendation {
   const drivers =
     input.attribution?.status === 'attributed' ? input.attribution.drivers.length : 0;
 
-  const reviewed = `Reviewed ${plural(open, 'open vote', 'open votes')}, ${plural(alerts, 'actionable alert', 'actionable alerts')}, ${plural(whales, 'whale vote', 'whale votes')} and ${plural(drivers, 'score driver', 'score drivers')} for the week ending ${isoDay(now)}`;
+  // The ISO week, not `now` (TODO-082). This used to print the generation date
+  // while the document's own title carried the Monday, so the same page named
+  // two different weeks. Derived from the same floor the title uses, so the
+  // two cannot drift apart.
+  const reviewed = `Reviewed ${plural(open, 'open vote', 'open votes')}, ${plural(alerts, 'actionable alert', 'actionable alerts')}, ${plural(whales, 'whale vote', 'whale votes')} and ${plural(drivers, 'score driver', 'score drivers')} for the week of ${isoDay(startOfIsoWeekUtc(now))}`;
 
   // Signals fired but matched no rule — do not call that "normal".
   if (alerts > 0 || whales > 0) {

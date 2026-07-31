@@ -32,7 +32,7 @@ const WEEK_OF = new Date('2026-07-06T00:00:00Z');
 const DEADLINE = new Date('2026-07-09T00:00:00Z');
 
 function baseInput(over: Partial<ExecutiveSummaryInput> = {}): ExecutiveSummaryInput {
-  return { organizationName: 'Acme Governance', daoName: 'Uniswap', weekOf: WEEK_OF, ...over };
+  return { organizationName: 'Acme Governance', daoName: 'Uniswap', weekStart: WEEK_OF, ...over };
 }
 
 function alert(over: Partial<AttentionAlert> = {}): AttentionAlert {
@@ -49,6 +49,7 @@ function alert(over: Partial<AttentionAlert> = {}): AttentionAlert {
     choiceKey: '1',
     collapsedCount: 0,
     deadline: null,
+    deadlinePassed: false,
     proposalTitle: null,
     createdAt: WEEK_OF,
     ...over,

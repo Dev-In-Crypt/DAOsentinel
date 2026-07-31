@@ -65,6 +65,13 @@ export interface OrgReportCsvInput {
    * the screen sees the same count in the same words. Omitted when null.
    */
   notesNotice?: string | null;
+  /**
+   * How many rows the active-proposals deadline filter dropped — still
+   * `state = 'active'` in the database but already past their close. Printed
+   * under that section in the same words the dashboard uses, so the export and
+   * the screen cannot appear to disagree. Omitted when zero.
+   */
+  staleActiveCount?: number;
 }
 
 /**
@@ -113,6 +120,19 @@ export function formatOrgReportCsv(input: OrgReportCsvInput): string {
       input.activeProposals.map((p) => [p.title, p.state, p.votesCount, isoDate(p.timestamp)]),
     ),
   );
+  // Same sentence, same count, as the dashboard's own panel. A silently
+  // shorter list would read as a quiet week rather than as a lagging sync.
+  if (input.staleActiveCount && input.staleActiveCount > 0) {
+    parts.push(
+      csvRow([
+        `${input.staleActiveCount} ${
+          input.staleActiveCount === 1
+            ? 'proposal still flagged active past its deadline was'
+            : 'proposals still flagged active past their deadline were'
+        } excluded — awaiting the next sync.`,
+      ]),
+    );
+  }
   parts.push('');
 
   parts.push(

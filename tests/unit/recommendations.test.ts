@@ -144,6 +144,7 @@ function alert(overrides: Partial<AttentionAlert> = {}): AttentionAlert {
     choiceKey: '1',
     collapsedCount: 0,
     deadline: IN_3_DAYS,
+    deadlinePassed: false,
     proposalTitle: 'Fee switch activation',
     createdAt: YESTERDAY,
     ...overrides,
@@ -677,7 +678,11 @@ describe('no_action_needed', () => {
     expect(recs[0].ruleId).toBe('no_action_needed');
     expect(recs[0].priority).toBe('low');
     expect(recs[0].deadline).toBeNull();
-    expect(recs[0].evidence).toContain('week ending 2026-07-29');
+    // TODO-082: the ISO week (Monday 2026-07-27), NOT the Wednesday the report
+    // happened to run — the title carries the same Monday, and one document
+    // naming two different weeks is exactly what this replaced.
+    expect(recs[0].evidence).toContain('week of 2026-07-27');
+    expect(recs[0].evidence).not.toContain('2026-07-29');
   });
 
   it('states what was reviewed rather than claiming nothing happened', () => {
