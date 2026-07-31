@@ -1,4 +1,4 @@
-import { and, eq, inArray, sql } from 'drizzle-orm';
+import { and, eq, gt, inArray, sql } from 'drizzle-orm';
 import { db } from '@/server/db';
 import { addressLabels, delegates, votes } from '@/server/db/schema';
 import { classifyOnChainAccount } from '@/lib/evm';
@@ -339,7 +339,14 @@ export async function fetchAddressIdentities(
         and(
           eq(addressLabels.daoId, daoId),
           inArray(addressLabels.address, wanted),
-          sql`${addressLabels.checkedAt} > ${cutoff}`,
+          // `gt`, NOT sql`${col} > ${cutoff}`. A raw template interpolation is
+          // an untyped bound parameter: Drizzle cannot tell it belongs to a
+          // timestamp column, so the Date reached postgres-js as an object and
+          // every read threw `Buffer.byteLength(Date)`. The catch below then
+          // swallowed it, so the cache silently never returned a row — each
+          // report re-resolved every address against Snapshot and the RPCs
+          // while reporting success. The typed operator serialises it.
+          gt(addressLabels.checkedAt, cutoff),
         ),
       );
   } catch (err) {
