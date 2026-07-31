@@ -16,7 +16,16 @@ jobs:
       - uses: actions/checkout@v5
       - uses: actions/setup-node@v5
         with:
-          node-version: '20'
+          # 22 LTS. Node 20 reached end-of-life in April 2026, so it stopped
+          # receiving security patches while still being what every CI run
+          # built and tested against.
+          #
+          # This pin is the ONLY Node version declared anywhere in the repo —
+          # there is no `engines` field and no .nvmrc, so Vercel picks its
+          # build Node from its own project setting and is NOT changed by this.
+          # Keep that setting on 22.x too, or CI and production build on
+          # different majors.
+          node-version: '22'
           cache: 'npm'
       - run: npm ci --legacy-peer-deps
       # Type check + build, run against a DELIBERATELY UNREACHABLE database.
