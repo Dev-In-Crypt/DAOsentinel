@@ -9,8 +9,12 @@ jobs:
   test:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      # v5, not v4: the v4 actions ship a Node 20 runtime, which GitHub has
+      # deprecated — runners already force them onto Node 24 and warn on every
+      # run. This is the ACTION's own runtime and is unrelated to `node-version`
+      # below, which is the Node the project is built and tested with.
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
         with:
           node-version: '20'
           cache: 'npm'
