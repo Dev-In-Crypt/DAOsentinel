@@ -122,7 +122,10 @@ export default async function DaoProfilePage({ params }: { params: Promise<{ slu
           </h1>
           <p className="mt-3 text-sm text-[hsl(var(--text-dim))]">
             {formatNumber(dao.totalProposals ?? 0)} proposals ·{' '}
-            {formatPct(Number(dao.avgParticipationRate ?? 0) * 100)} avg participation
+            {/* A proxy, and sometimes not measurable at all — say which. */}
+            {dao.avgParticipationRate == null
+              ? 'turnout not measurable'
+              : `${formatPct(Number(dao.avgParticipationRate) * 100)} est. turnout`}
             {dao.governanceToken && (
               <>
                 {' '}
@@ -190,6 +193,22 @@ export default async function DaoProfilePage({ params }: { params: Promise<{ slu
                 </div>
               </div>
             ))}
+            {/* An axis we could not measure is OMITTED from `breakdown` and
+                excluded from the score rather than counted as zero, so the
+                grid would otherwise just be one tile shorter with no
+                explanation. Name it instead. */}
+            {breakdown.participation == null && (
+              <div className="stat-cell" title={METRIC_HINT.participation}>
+                <div className="lab">{METRIC_LABEL.participation}</div>
+                <div className="val" style={{ color: 'hsl(var(--text-dim))' }}>
+                  —
+                </div>
+                <div className="mt-3 text-xs text-[hsl(var(--text-dim))]">
+                  Not measurable for this DAO — excluded from the score rather than counted as
+                  zero.
+                </div>
+              </div>
+            )}
           </div>
         </div>
       )}

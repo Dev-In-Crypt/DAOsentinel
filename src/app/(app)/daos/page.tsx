@@ -137,7 +137,14 @@ export default async function DaosPage({
                   </div>
                   <div className="mt-1 text-xs mono text-[hsl(var(--text-dim))]">
                     {formatNumber(d.totalProposals ?? 0)} proposals ·{' '}
-                    {(Number(d.avgParticipationRate ?? 0) * 100).toFixed(2)}% participation
+                    {/* Null means we could not measure turnout — no vote data,
+                        or too few proposals for the ratio to mean anything.
+                        `?? 0` printed "0.00% participation" for 32 of 49 DAOs,
+                        which reads as "nobody votes here" about DAOs we simply
+                        have no votes for. */}
+                    {d.avgParticipationRate == null
+                      ? 'turnout not measurable'
+                      : `${(Number(d.avgParticipationRate) * 100).toFixed(2)}% turnout (est.)`}
                     {d.treasuryUsd ? ` · ${formatUSD(Number(d.treasuryUsd))} treasury` : ''}
                   </div>
                 </div>

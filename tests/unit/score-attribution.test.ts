@@ -432,3 +432,59 @@ describe('materiality of the attribution narrative', () => {
     expect(formatScoreAttributionSection(above)).toContain('Biggest driver');
   });
 });
+
+/**
+ * TODO-090. `computeScoreForDao` now omits an axis it could not measure and
+ * renormalises the rest, so a Tally-only DAO is scored over four metrics, not
+ * five-with-a-zero. The decomposition has to use the same divisor or the
+ * bullets stop summing to the move they claim to explain.
+ */
+describe('attribution when an axis is unmeasurable on both sides', () => {
+  const FOUR = ['powerDistribution', 'proposalDiversity', 'delegateAccountability', 'manipulationResistance'] as const;
+
+  /** Scores a partial breakdown the way computeScoreForDao does. */
+  function score(breakdown: Record<string, number>): number {
+    let weighted = 0;
+    let weight = 0;
+    for (const m of Object.keys(breakdown) as (keyof typeof SCORE_WEIGHTS)[]) {
+      weighted += breakdown[m] * SCORE_WEIGHTS[m];
+      weight += SCORE_WEIGHTS[m];
+    }
+    return Math.round((weighted / weight) * 100) / 100;
+  }
+
+  const prevBreakdown = { powerDistribution: 70, proposalDiversity: 80, delegateAccountability: 50, manipulationResistance: 90 };
+  const curBreakdown = { powerDistribution: 62, proposalDiversity: 80, delegateAccountability: 50, manipulationResistance: 84 };
+
+  const prev: ScoreSnapshot = { score: score(prevBreakdown), breakdown: prevBreakdown, computedAt: new Date('2026-07-21T00:00:00Z') };
+  const cur: ScoreSnapshot = { score: score(curBreakdown), breakdown: curBreakdown, computedAt: new Date('2026-07-28T00:00:00Z') };
+
+  it('attributes over the four measured axes instead of withholding', () => {
+    const a = attributed(attributeScoreChange(cur, prev));
+    expect(a.drivers.map((d) => d.metric).sort()).toEqual([...FOUR].sort());
+  });
+
+  it('reconciles: the contributions still sum to the published move', () => {
+    const a = attributed(attributeScoreChange(cur, prev));
+    expect(Math.abs(a.residual)).toBeLessThanOrEqual(ATTRIBUTION_RESIDUAL_TOLERANCE);
+    expect(a.attributedDelta).toBeCloseTo(a.scoreDelta, 1);
+  });
+
+  it('still refuses when an axis is present on one side only', () => {
+    // That genuinely breaks reconciliation — the two scores were built from
+    // different axis sets, so neither divisor is right for both.
+    const lopsided: ScoreSnapshot = {
+      ...cur,
+      breakdown: { ...curBreakdown, participation: 42 },
+    };
+    const out = unavailable(attributeScoreChange(lopsided, prev));
+    expect(out.reason).toBe('metrics_missing');
+    expect(out.missingMetrics).toEqual(['participation']);
+  });
+
+  it('degrades rather than dividing by zero when nothing is measurable', () => {
+    const empty: ScoreSnapshot = { score: 0, breakdown: { nonsense: 1 }, computedAt: cur.computedAt };
+    const out = unavailable(attributeScoreChange(empty, { ...prev, breakdown: { nonsense: 1 } }));
+    expect(out.reason).toBe('no_current_breakdown');
+  });
+});

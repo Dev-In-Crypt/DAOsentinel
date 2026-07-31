@@ -165,18 +165,34 @@ export function attributeScoreChange(
     coversFullWeek: elapsedMs >= 7 * 86400_000,
   };
 
-  const drivers: MetricContribution[] = [];
+  // Pair up the metrics first, because the weight each one carries depends on
+  // how many of them there are. `computeScoreForDao` omits an axis it could
+  // not measure (TODO-090) and renormalises the rest, so the score is
+  // Σ(value × weight) / Σ(weight over PRESENT metrics). The same divisor has
+  // to be applied here or the contributions cannot reconcile with the delta
+  // they are supposed to explain.
+  const paired: Array<{ metric: ScoreMetric; cur: number; prev: number }> = [];
   const missingMetrics: ScoreMetric[] = [];
 
   for (const metric of SCORE_METRICS) {
     const cur = readMetric(current.breakdown, metric);
     const prev = readMetric(previous.breakdown, metric);
-    if (cur === null || prev === null) {
-      missingMetrics.push(metric);
+    if (cur !== null && prev !== null) {
+      paired.push({ metric, cur, prev });
       continue;
     }
+    // Absent from BOTH snapshots is not a hole — the axis simply did not
+    // contribute to either score, so the remaining four still decompose the
+    // move exactly. Only present-on-one-side breaks reconciliation, because
+    // then the two scores were built from different axis sets.
+    if (cur !== null || prev !== null) missingMetrics.push(metric);
+  }
+
+  const weightSum = paired.reduce((sum, p) => sum + SCORE_WEIGHTS[p.metric], 0);
+
+  const drivers: MetricContribution[] = paired.map(({ metric, cur, prev }) => {
     const delta = round(cur - prev);
-    drivers.push({
+    return {
       metric,
       label: METRIC_LABEL[metric] ?? metric,
       hint: METRIC_HINT[metric] ?? '',
@@ -185,15 +201,21 @@ export function attributeScoreChange(
       delta,
       // Round the contribution itself so the published bullets sum to the
       // published total instead of to a hidden higher-precision figure.
-      contribution: round(delta * SCORE_WEIGHTS[metric]),
-    });
-  }
+      contribution: round((delta * SCORE_WEIGHTS[metric]) / weightSum),
+    };
+  });
 
   // A partial decomposition can't be reconciled against the score delta, so it
   // can't be trusted — degrade, naming the keys, rather than quietly dropping
   // (or zeroing) an axis in a customer-facing explanation.
   if (missingMetrics.length > 0) {
     return { status: 'unavailable', reason: 'metrics_missing', period, missingMetrics };
+  }
+
+  // Every axis unmeasurable on both sides: there is no decomposition to give,
+  // and dividing by zero below would produce NaN contributions.
+  if (paired.length === 0) {
+    return { status: 'unavailable', reason: 'no_current_breakdown', period };
   }
 
   const scoreDelta = round(current.score - previous.score);

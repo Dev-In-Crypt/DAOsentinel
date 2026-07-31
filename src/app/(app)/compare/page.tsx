@@ -228,11 +228,19 @@ export default async function ComparePage({
             bValue={b.dao.totalProposals ?? 0}
             format={(v) => (v == null ? '—' : formatNumber(v))}
           />
+          {/* Null stays null — the other rows here already render "—" for
+              missing data, and turning an unmeasurable turnout into 0% would
+              make one DAO look worse than the other on evidence we do not
+              have. */}
           <StatRow
-            label="Avg participation"
-            aValue={Number(a.dao.avgParticipationRate ?? 0) * 100}
-            bValue={Number(b.dao.avgParticipationRate ?? 0) * 100}
-            format={(v) => formatPct(v)}
+            label="Est. turnout (proxy)"
+            aValue={
+              a.dao.avgParticipationRate == null ? null : Number(a.dao.avgParticipationRate) * 100
+            }
+            bValue={
+              b.dao.avgParticipationRate == null ? null : Number(b.dao.avgParticipationRate) * 100
+            }
+            format={(v) => (v == null ? '—' : formatPct(v))}
           />
           <StatRow
             label="Token price"

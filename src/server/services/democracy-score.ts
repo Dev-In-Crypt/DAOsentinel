@@ -5,11 +5,55 @@ import { SCORE_WEIGHTS, SCORE_DROP_ALERT } from '@/lib/constants';
 import { publishAlert } from './notifier';
 
 export interface ScoreBreakdown {
-  participation: number;
+  /**
+   * ABSENT when turnout could not be measured — see
+   * `MIN_PROPOSALS_FOR_TURNOUT` and the electorate check in
+   * `computeScoreForDao`. Optional rather than 0 on purpose: a 0 here is the
+   * claim "almost nobody voted", which is a different and much stronger
+   * statement than "we have no vote data for this DAO", and it was being made
+   * about 32 of 49 DAOs.
+   */
+  participation?: number;
   powerDistribution: number;
   proposalDiversity: number;
   delegateAccountability: number;
   manipulationResistance: number;
+}
+
+/**
+ * How many recent proposals the turnout ratio needs before it means anything.
+ *
+ * The electorate is "every address we have seen vote in this DAO", so with a
+ * single proposal it IS that proposal's voters and the ratio is 1 by
+ * construction — three DAOs sat at exactly 100.00% for this reason. Two
+ * samples barely separate the denominator from the numerator either. Three is
+ * the first point where the ratio carries information rather than arithmetic.
+ */
+export const MIN_PROPOSALS_FOR_TURNOUT = 3;
+
+/**
+ * The Democracy Score from whichever axes could actually be measured.
+ *
+ * Metrics absent from `breakdown` are EXCLUDED and the remaining weights are
+ * renormalised, rather than contributing zero. Scoring an unmeasured axis as
+ * zero is a fabricated claim about the DAO, which is precisely what this
+ * project's governance-data rules forbid.
+ *
+ * With all five present the weights sum to 1, so this is arithmetically
+ * identical to the plain weighted sum it replaced — no DAO's score moves for
+ * an unrelated reason. A test pins that.
+ */
+export function weightedScore(breakdown: Partial<ScoreBreakdown>): number {
+  let weighted = 0;
+  let weightSum = 0;
+  for (const metric of Object.keys(SCORE_WEIGHTS) as (keyof typeof SCORE_WEIGHTS)[]) {
+    const value = breakdown[metric];
+    if (typeof value !== 'number' || !Number.isFinite(value)) continue;
+    weighted += value * SCORE_WEIGHTS[metric];
+    weightSum += SCORE_WEIGHTS[metric];
+  }
+  if (weightSum === 0) return 0;
+  return weighted / weightSum;
 }
 
 export function calculateGini(values: number[]): number {
@@ -33,7 +77,8 @@ export interface ScoreResult {
   breakdown: ScoreBreakdown;
   totalProposals: number;
   totalVoters: number;
-  avgParticipationRate: number; // 0–1
+  /** 0–1, or null when turnout could not be measured at all. Never 0-as-unknown. */
+  avgParticipationRate: number | null;
 }
 
 export async function computeScoreForDao(daoId: string): Promise<ScoreResult | null> {
@@ -66,12 +111,17 @@ export async function computeScoreForDao(daoId: string): Promise<ScoreResult | n
   // 1. Participation: real turnout ratio — voters on each recent proposal vs
   // the DAO's known electorate. No artificial multiplier; a proposal can't
   // have more voters than the all-time distinct count, so the ratio is ≤ 1.
-  const turnoutRates =
-    electorate > 0
-      ? recentProps.map((p) => Math.min((p.votesCount ?? 0) / electorate, 1))
-      : [];
-  const avgParticipationRate = round2(avg(turnoutRates)); // 0–1
-  const participationScore = round(avgParticipationRate * 100);
+  //
+  // Measurable only when we have vote data AND enough proposals for the ratio
+  // to be more than a tautology. Both failures used to collapse to 0, which
+  // told the reader turnout was catastrophic when the truth was that we had
+  // nothing to divide by.
+  const canMeasureTurnout = electorate > 0 && recentProps.length >= MIN_PROPOSALS_FOR_TURNOUT;
+  const avgParticipationRate = canMeasureTurnout
+    ? round2(avg(recentProps.map((p) => Math.min((p.votesCount ?? 0) / electorate, 1))))
+    : null;
+  const participationScore =
+    avgParticipationRate === null ? null : round(avgParticipationRate * 100);
 
   // 2. Power distribution: Gini across votes in recent proposals
   let powerScore = 50; // fallback if no votes data
@@ -111,20 +161,16 @@ export async function computeScoreForDao(daoId: string): Promise<ScoreResult | n
   const manipulationScore = (clean / total) * 100;
 
   const breakdown: ScoreBreakdown = {
-    participation: round(participationScore),
+    // Key omitted entirely when unmeasurable, so every consumer — the score,
+    // the attribution, the UI — sees "absent" rather than a made-up zero.
+    ...(participationScore === null ? {} : { participation: participationScore }),
     powerDistribution: round(powerScore),
     proposalDiversity: round(proposalDiversityScore),
     delegateAccountability: round(delegateScore),
     manipulationResistance: round(manipulationScore),
   };
 
-  const score = round(
-    breakdown.participation * SCORE_WEIGHTS.participation +
-      breakdown.powerDistribution * SCORE_WEIGHTS.powerDistribution +
-      breakdown.proposalDiversity * SCORE_WEIGHTS.proposalDiversity +
-      breakdown.delegateAccountability * SCORE_WEIGHTS.delegateAccountability +
-      breakdown.manipulationResistance * SCORE_WEIGHTS.manipulationResistance,
-  );
+  const score = round(weightedScore(breakdown));
 
   return { score, breakdown, totalProposals, totalVoters: electorate, avgParticipationRate };
 }
@@ -154,7 +200,10 @@ export async function recomputeAllDaoScores(): Promise<{ updated: number; alerts
         scoreBreakdown: result.breakdown as unknown as Record<string, number>,
         totalProposals: result.totalProposals,
         totalVoters: result.totalVoters,
-        avgParticipationRate: String(result.avgParticipationRate),
+        // NOT String(...) — that would store the literal text "null" in a
+        // numeric column for every DAO whose turnout is unmeasurable.
+        avgParticipationRate:
+          result.avgParticipationRate === null ? null : String(result.avgParticipationRate),
         scoreUpdatedAt: new Date(),
         updatedAt: new Date(),
       })
