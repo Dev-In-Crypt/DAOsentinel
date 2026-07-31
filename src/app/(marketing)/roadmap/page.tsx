@@ -46,7 +46,7 @@ const PHASES: Phase[] = [
       {
         status: 'shipped',
         title: 'Snapshot data pipeline',
-        body: 'Proposals and votes for the top 50 DAOs ingested every 5 minutes via Snapshot GraphQL hub, with full vote history indexed per proposal.',
+        body: 'Proposals and votes for the top 50 DAOs ingested every 20 minutes via Snapshot GraphQL hub, with full vote history indexed per proposal.',
       },
       {
         status: 'shipped',

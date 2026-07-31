@@ -221,8 +221,15 @@ export function SocialProof() {
         </span>
         <h2>Monitoring the DAOs that move the ecosystem.</h2>
         <p>
+          {/*
+            Twenty, not five. The sync interval was widened to 20 minutes in
+            d1debc4 because the paginated walkers run 10-16 minutes and
+            consecutive 5-minute ticks overlapped and were cancelled. The
+            5-minute cadence exists only on the paid priority path. Source of
+            truth: .github/workflows/cron.yml.
+          */}
           Live governance data across 50+ DAOs on Snapshot and on-chain Tally governors —
-          refreshed every five minutes.
+          refreshed every twenty minutes.
         </p>
       </div>
       <div className="logos-row reveal">

@@ -34,7 +34,7 @@ export default function DocsPage() {
             <ul className="space-y-2 text-sm text-[hsl(var(--text-dim))]">
               <li>
                 <strong className="text-[hsl(var(--text))]">Snapshot GraphQL</strong> — off-chain
-                proposals and votes for 50 monitored DAOs, polled every 5 minutes.
+                proposals and votes for 50 monitored DAOs, polled every 20 minutes.
               </li>
               <li>
                 <strong className="text-[hsl(var(--text))]">Tally API</strong> — on-chain Governor
