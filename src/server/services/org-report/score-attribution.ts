@@ -331,6 +331,23 @@ export async function fetchScoreAttribution(
   return attributeScoreChange(current, earliest ? toSnapshot(earliest) : null);
 }
 
+/**
+ * Whether any metric moved by more than the rounding this module already
+ * declares it tolerates.
+ *
+ * `ATTRIBUTION_RESIDUAL_TOLERANCE` exists because both sides of the arithmetic
+ * are independently rounded to 2dp, so a discrepancy that small carries no
+ * information. A CONTRIBUTION that small carries none either — reporting it as
+ * a driver is presenting the rounding as a finding.
+ *
+ * Deliberately reuses that constant rather than introducing a second threshold:
+ * two numbers that both mean "below this is noise" would eventually disagree.
+ * Exactly at the tolerance still counts as rounding; only above it is a result.
+ */
+export function hasMaterialContribution(drivers: readonly MetricContribution[]): boolean {
+  return drivers.some((d) => Math.abs(d.contribution) > ATTRIBUTION_RESIDUAL_TOLERANCE);
+}
+
 /** `+1.25` / `-3.50` — an explicit sign on every figure; deltas read better. */
 function signed(n: number): string {
   return `${n >= 0 ? '+' : ''}${n.toFixed(2)}`;
@@ -385,6 +402,20 @@ export function formatScoreAttributionSection(attribution: ScoreAttribution): st
 
   if (movers.length === 0) {
     return `${SECTION_HEADER}\n_Measured against ${baseline}: every metric held steady and the Democracy Score did not move._`;
+  }
+
+  // Nothing crossed the rounding this decomposition already tolerates, so
+  // there is no finding here — only arithmetic noise. Say the move and stop,
+  // rather than printing bullets of hundredths under a "Biggest driver"
+  // headline complete with its methodology hint, which is what a live report
+  // did for a +0.01 score move on a +0.02 contribution.
+  //
+  // Tested against the CONTRIBUTIONS, never the headline delta: two metrics
+  // moving two points in opposite directions net to zero while genuinely
+  // changing what the score is made of, and that is exactly what this section
+  // exists to surface.
+  if (!hasMaterialContribution(movers)) {
+    return `${SECTION_HEADER}\n_Measured against ${baseline}: the Democracy Score moved ${signed(scoreDelta)} points. No metric moved by more than the ±${ATTRIBUTION_RESIDUAL_TOLERANCE} this decomposition treats as rounding, so there is nothing to attribute this period._`;
   }
 
   // Surface the residual rather than hiding it — it is small by construction

@@ -323,3 +323,112 @@ describe('formatScoreAttributionSection', () => {
     expect(Math.abs(printed.reduce((s, n) => s + n, 0) - total)).toBeLessThan(EPSILON);
   });
 });
+
+/**
+ * TODO-085. The live Uniswap report narrated a full attribution — bullets and a
+ * "Biggest driver" sentence with its methodology hint — for a Democracy Score
+ * that had moved **+0.01** on a **+0.02** contribution. Both figures are
+ * smaller than the rounding this decomposition already declares it tolerates,
+ * so the section was presenting noise in the shape of a finding.
+ */
+describe('materiality of the attribution narrative', () => {
+  /** One driver, well under the ±0.1 the decomposition tolerates as rounding. */
+  const NOISE: ScoreAttribution = {
+    status: 'attributed',
+    period: {
+      currentComputedAt: new Date('2026-07-31T02:00:00Z'),
+      baselineComputedAt: new Date('2026-07-24T02:00:00Z'),
+      ageDays: 7,
+      coversFullWeek: true,
+    },
+    previousScore: 47.58,
+    currentScore: 47.59,
+    scoreDelta: 0.01,
+    attributedDelta: 0.02,
+    residual: -0.01,
+    drivers: [
+      {
+        metric: 'powerDistribution',
+        label: 'Power distribution',
+        hint: 'How evenly voting power is spread.',
+        previous: 2,
+        current: 2,
+        delta: 0.06,
+        contribution: 0.02,
+      },
+    ],
+  };
+
+  it('does not announce a biggest driver for a move inside the rounding', () => {
+    const md = formatScoreAttributionSection(NOISE);
+    expect(md).not.toContain('Biggest driver');
+    expect(md).not.toContain('How evenly voting power is spread');
+  });
+
+  it('still states the move and why nothing is attributed', () => {
+    const md = formatScoreAttributionSection(NOISE);
+    expect(md).toContain('+0.01');
+    expect(md).toContain('rounding');
+    // The section is not silently dropped — silence would read as "not measured".
+    expect(md).toContain('What moved the Democracy Score');
+  });
+
+  it('lists no per-metric bullets for it', () => {
+    expect(formatScoreAttributionSection(NOISE)).not.toContain('- **Power distribution**');
+  });
+
+  /**
+   * The threshold must NOT be applied to the headline delta: two metrics moving
+   * two points in opposite directions sum to zero while genuinely changing the
+   * composition of the score, which is exactly the thing this section exists to
+   * surface.
+   */
+  it('still narrates offsetting drivers that cancel to a zero net move', () => {
+    const offsetting: ScoreAttribution = {
+      ...NOISE,
+      previousScore: 50,
+      currentScore: 50,
+      scoreDelta: 0,
+      attributedDelta: 0,
+      residual: 0,
+      drivers: [
+        { ...NOISE.drivers[0], metric: 'participation', label: 'Voter participation', contribution: 2, delta: 8 },
+        { ...NOISE.drivers[0], metric: 'powerDistribution', label: 'Power distribution', contribution: -2, delta: -8 },
+      ],
+    };
+    const md = formatScoreAttributionSection(offsetting);
+    expect(md).toContain('Biggest driver');
+    expect(md).toContain('- **Voter participation**');
+  });
+
+  it('leaves a genuinely material week exactly as it was', () => {
+    const md = formatScoreAttributionSection(attributeScoreChange(CURRENT, PREVIOUS));
+    expect(md).toContain('Biggest driver');
+    expect(md).toContain('- **Voter participation**');
+  });
+
+  it('keeps the distinct "held steady" wording when nothing moved at all', () => {
+    const flat: ScoreAttribution = {
+      ...NOISE,
+      scoreDelta: 0,
+      attributedDelta: 0,
+      residual: 0,
+      drivers: [{ ...NOISE.drivers[0], delta: 0, contribution: 0 }],
+    };
+    expect(formatScoreAttributionSection(flat)).toContain('held steady');
+  });
+
+  it('uses the tolerance the module already declares, not a new number', () => {
+    const atThreshold: ScoreAttribution = {
+      ...NOISE,
+      drivers: [{ ...NOISE.drivers[0], contribution: ATTRIBUTION_RESIDUAL_TOLERANCE }],
+    };
+    // Exactly at the tolerance is still rounding; above it is a finding.
+    expect(formatScoreAttributionSection(atThreshold)).not.toContain('Biggest driver');
+    const above: ScoreAttribution = {
+      ...NOISE,
+      drivers: [{ ...NOISE.drivers[0], contribution: ATTRIBUTION_RESIDUAL_TOLERANCE + 0.01 }],
+    };
+    expect(formatScoreAttributionSection(above)).toContain('Biggest driver');
+  });
+});

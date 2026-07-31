@@ -149,3 +149,40 @@ describe('buildOrgReportVisuals', () => {
     expect(visuals).toEqual({ quorumMeters: [], attributionBars: [] });
   });
 });
+
+/**
+ * The module's own contract: a chart may not assert something the text of the
+ * same report declines to say. Once `formatScoreAttributionSection` stopped
+ * narrating drivers that sit inside the rounding (TODO-085), the bars had to
+ * stop drawing them too — otherwise the PDF would show a chart beside a
+ * sentence saying there is nothing to attribute.
+ */
+describe('buildAttributionBars — materiality', () => {
+  const noise: ScoreAttribution = {
+    ...ATTRIBUTED,
+    scoreDelta: 0.01,
+    attributedDelta: 0.02,
+    residual: -0.01,
+    drivers: [{ ...ATTRIBUTED.drivers[0], label: 'Power distribution', contribution: 0.02, delta: 0.06 }],
+  };
+
+  it('draws nothing when no metric cleared the rounding', () => {
+    expect(buildAttributionBars(noise)).toEqual([]);
+  });
+
+  it('still draws offsetting drivers that net to zero', () => {
+    const offsetting: ScoreAttribution = {
+      ...noise,
+      scoreDelta: 0,
+      drivers: [
+        { ...ATTRIBUTED.drivers[0], label: 'Voter participation', contribution: 2 },
+        { ...ATTRIBUTED.drivers[0], label: 'Power distribution', contribution: -2 },
+      ],
+    };
+    expect(buildAttributionBars(offsetting)).toHaveLength(2);
+  });
+
+  it('leaves a material week untouched', () => {
+    expect(buildAttributionBars(ATTRIBUTED)).toHaveLength(2);
+  });
+});

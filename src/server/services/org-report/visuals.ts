@@ -16,7 +16,7 @@
  */
 
 import type { AttributionBarInput, QuorumMeterInput } from '@/lib/pdf/digest-pdf';
-import type { ScoreAttribution } from './score-attribution';
+import { hasMaterialContribution, type ScoreAttribution } from './score-attribution';
 import type { UpcomingProposalItem } from './upcoming-quorum';
 
 export interface OrgReportVisuals {
@@ -58,9 +58,13 @@ export function buildQuorumMeters(upcoming: readonly UpcomingProposalItem[]): Qu
  */
 export function buildAttributionBars(attribution: ScoreAttribution): AttributionBarInput[] {
   if (attribution.status !== 'attributed') return [];
-  return attribution.drivers
-    .filter((d) => d.contribution !== 0)
-    .map((d) => ({ label: d.label, contribution: d.contribution }));
+  const movers = attribution.drivers.filter((d) => d.contribution !== 0);
+  // The same materiality gate the prose applies (TODO-085). Where the text
+  // says there is nothing to attribute, the chart must not draw one anyway —
+  // a reader looking at a bar beside that sentence would not know which to
+  // believe.
+  if (!hasMaterialContribution(movers)) return [];
+  return movers.map((d) => ({ label: d.label, contribution: d.contribution }));
 }
 
 /** Both charts for one report. Always returns arrays — never undefined — so a quiet week is an empty block, not a missing key. */
