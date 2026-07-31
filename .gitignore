@@ -39,3 +39,7 @@ drizzle/meta/
 # Local demo recordings — large binaries, never belong in git
 *.mp4
 *.mov
+
+# Client-facing sales samples and outreach drafts — pricing/positioning,
+# not for the public MIT repo. Same category as MONETIZATION.md.
+/OUTREACH/
