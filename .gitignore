@@ -26,6 +26,10 @@ drizzle/meta/
 /SECURITY_NOTES.md
 /DECISIONS.md
 /RUNS/
+# The slash-command definitions that drive the workflow above (dao-daily,
+# dao-session, dao-setup-review, dao-roadmap-review, dao-next-feature-plan).
+# Same category as the docs they operate on — internal process, not product.
+/.claude/
 
 # Internal business/monetization planning — pricing, sales mechanics, and
 # positioning are not appropriate for a public MIT repo, unlike docs/specs/
