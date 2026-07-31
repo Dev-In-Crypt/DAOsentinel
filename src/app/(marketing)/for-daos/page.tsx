@@ -38,9 +38,15 @@ const PRODUCTS: Product[] = [
   {
     eyebrow: 'White-label',
     title: 'White-label hosted dashboard',
-    body: 'A co-branded instance of the same dashboard — your logo, your colors, your subdomain — for a single DAO or a governance provider’s whole book of DAOs.',
+    // The example must be a label under daosentinel.xyz. `extractSubdomain`
+    // (src/middleware.ts) matches only `<label>.daosentinel.xyz`, so a
+    // customer's own domain resolves to nothing and falls through to the
+    // public site. This page previously offered `governance.yourdao.xyz`,
+    // which is a promise the product cannot keep and a sales call would have
+    // had to walk back.
+    body: 'A co-branded instance of the same dashboard — your logo, your colors, your own subdomain on daosentinel.xyz — for a single DAO or a governance provider’s whole book of DAOs.',
     bullets: [
-      'Co-branded subdomain (e.g. governance.yourdao.xyz)',
+      'Co-branded subdomain (e.g. yourdao.daosentinel.xyz)',
       'Optional scope restriction to your licensed DAOs only',
       'Setup + ongoing support included',
     ],
