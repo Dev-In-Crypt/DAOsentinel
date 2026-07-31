@@ -1,4 +1,5 @@
 import { ImageResponse } from 'next/og';
+import { TRACKED_DAOS } from '@/lib/constants';
 
 // Standard Open Graph card size. Twitter falls back to this when no
 // twitter-image is provided.
@@ -180,7 +181,7 @@ export default function OpenGraphImage() {
               maxWidth: 640,
             }}
           >
-            DAO governance watchdog · 50 DAOs · whale alerts · weekly digest
+            {`DAO governance watchdog · ${TRACKED_DAOS.length} DAOs · whale alerts · weekly digest`}
           </div>
         </div>
       </div>

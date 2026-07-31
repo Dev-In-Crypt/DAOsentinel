@@ -1,5 +1,6 @@
 import { Header } from '@/components/layout/Header';
 import { Footer } from '@/components/layout/Footer';
+import { TRACKED_DAOS } from '@/lib/constants';
 
 export const metadata = {
   title: 'Roadmap — DAO Sentinel',
@@ -46,7 +47,7 @@ const PHASES: Phase[] = [
       {
         status: 'shipped',
         title: 'Snapshot data pipeline',
-        body: 'Proposals and votes for the top 50 DAOs ingested every 20 minutes via Snapshot GraphQL hub, with full vote history indexed per proposal.',
+        body: `Proposals and votes for the top ${TRACKED_DAOS.length} DAOs ingested every 20 minutes via Snapshot GraphQL hub, with full vote history indexed per proposal.`,
       },
       {
         status: 'shipped',

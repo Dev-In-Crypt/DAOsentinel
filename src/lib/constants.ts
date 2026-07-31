@@ -71,7 +71,13 @@ export interface TrackedDao {
 export const TRACKED_DAOS: TrackedDao[] = [
   // Tally org IDs verified against api.tally.xyz/query → organization(input:{slug}).
   { snapshotSpaceId: 'uniswapgovernance.eth', name: 'Uniswap', slug: 'uniswap', chain: 'ethereum', token: 'UNI', website: 'https://uniswap.org', tallyOrgId: '2206072050458560434' },
-  { snapshotSpaceId: 'aave.eth', name: 'Aave', slug: 'aave', chain: 'ethereum', token: 'AAVE', website: 'https://aave.com', tallyOrgId: '2206072049829414624' },
+  // ONE Aave entry, on `aavedao.eth`. The list used to carry `aave.eth` here
+  // and `aavedao.eth` further down as a separate "Aave DAO", which produced two
+  // rows for one DAO with two different Democracy Scores in the leaderboard:
+  // `aave.eth` is the legacy space and yields nothing (0 votes, 0 proposals),
+  // while all live Snapshot activity is on `aavedao.eth`. The Tally governor
+  // belongs to the same DAO and now sits on the same row (TODO-089).
+  { snapshotSpaceId: 'aavedao.eth', name: 'Aave', slug: 'aave', chain: 'ethereum', token: 'AAVE', website: 'https://aave.com', tallyOrgId: '2206072049829414624' },
   { snapshotSpaceId: 'ens.eth', name: 'ENS', slug: 'ens', chain: 'ethereum', token: 'ENS', website: 'https://ens.domains', tallyOrgId: '2206072050458560426' },
   { snapshotSpaceId: 'arbitrumfoundation.eth', name: 'Arbitrum', slug: 'arbitrum', chain: 'arbitrum', token: 'ARB', website: 'https://arbitrum.foundation', tallyOrgId: '2206072050315953936' },
   { snapshotSpaceId: 'opcollective.eth', name: 'Optimism', slug: 'optimism', chain: 'optimism', token: 'OP', website: 'https://optimism.io', tallyOrgId: '2206072049871356990' },
@@ -98,7 +104,6 @@ export const TRACKED_DAOS: TrackedDao[] = [
   { snapshotSpaceId: 'developerdao.eth', name: 'Developer DAO', slug: 'developer-dao', chain: 'ethereum', token: 'CODE', website: 'https://developerdao.com' },
   { snapshotSpaceId: 'gearbox.eth', name: 'Gearbox', slug: 'gearbox', chain: 'ethereum', token: 'GEAR', website: 'https://gearbox.fi' },
   { snapshotSpaceId: 'fei.eth', name: 'Fei', slug: 'fei', chain: 'ethereum', token: 'FEI' },
-  { snapshotSpaceId: 'aavedao.eth', name: 'Aave DAO', slug: 'aave-dao', chain: 'ethereum', token: 'AAVE' },
   { snapshotSpaceId: 'jonesdao.eth', name: 'Jones DAO', slug: 'jones', chain: 'arbitrum', token: 'JONES' },
   { snapshotSpaceId: 'aladdindao.eth', name: 'Aladdin DAO', slug: 'aladdin', chain: 'ethereum', token: 'ALD' },
   { snapshotSpaceId: 'angle-dao.eth', name: 'Angle', slug: 'angle', chain: 'ethereum', token: 'ANGLE' },

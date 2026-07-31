@@ -1,6 +1,7 @@
 'use client';
 import { useEffect } from 'react';
 import { NewsletterForm } from '@/components/NewsletterForm';
+import { TRACKED_DAOS } from '@/lib/constants';
 
 const ICONS = {
   whale: (
@@ -228,8 +229,12 @@ export function SocialProof() {
             5-minute cadence exists only on the paid priority path. Source of
             truth: .github/workflows/cron.yml.
           */}
-          Live governance data across 50+ DAOs on Snapshot and on-chain Tally governors —
-          refreshed every twenty minutes.
+          {/* Derived, never typed out: the count moved from 50 to 49 the
+              moment the duplicate Aave rows were merged (TODO-089), and a
+              hardcoded number would have quietly started overstating coverage
+              on the page whose job is to be believed. */}
+          Live governance data across {TRACKED_DAOS.length} DAOs on Snapshot and on-chain Tally
+          governors — refreshed every twenty minutes.
         </p>
       </div>
       <div className="logos-row reveal">

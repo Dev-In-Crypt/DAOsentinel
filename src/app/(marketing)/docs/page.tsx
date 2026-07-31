@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import { Header } from '@/components/layout/Header';
 import { Footer } from '@/components/layout/Footer';
+import { TRACKED_DAOS } from '@/lib/constants';
 
 export const metadata = {
   title: 'Docs — DAO Sentinel',
@@ -34,7 +35,7 @@ export default function DocsPage() {
             <ul className="space-y-2 text-sm text-[hsl(var(--text-dim))]">
               <li>
                 <strong className="text-[hsl(var(--text))]">Snapshot GraphQL</strong> — off-chain
-                proposals and votes for 50 monitored DAOs, polled every 20 minutes.
+                proposals and votes for {TRACKED_DAOS.length} monitored DAOs, polled every 20 minutes.
               </li>
               <li>
                 <strong className="text-[hsl(var(--text))]">Tally API</strong> — on-chain Governor
