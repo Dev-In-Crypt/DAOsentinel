@@ -85,11 +85,18 @@ export async function computeScoreForDao(daoId: string): Promise<ScoreResult | n
   const [dao] = await db.select().from(daos).where(eq(daos.id, daoId)).limit(1);
   if (!dao) return null;
 
+  // Ordered by the proposal's OWN timeline, not by `createdAt` — that column is
+  // `defaultNow()`, i.e. when we inserted the row, which is only incidentally
+  // the same order in steady state and is meaningless after a backfill, where
+  // every row shares one insert timestamp. Threshold was added with 119
+  // historical proposals and scored over an arbitrary twenty of them until this
+  // was fixed. `endTimestamp` descending puts open votes first, then the most
+  // recently concluded, which is what "recent" is meant to mean here.
   const recentProps = await db
     .select()
     .from(proposals)
     .where(eq(proposals.daoId, daoId))
-    .orderBy(desc(proposals.createdAt))
+    .orderBy(desc(proposals.endTimestamp))
     .limit(20);
 
   // Real rollup counters across ALL proposals/votes for this DAO (these back

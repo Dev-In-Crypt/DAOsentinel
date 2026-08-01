@@ -100,6 +100,12 @@ export const TRACKED_DAOS: TrackedDao[] = [
   { snapshotSpaceId: 'olympusdao.eth', name: 'Olympus', slug: 'olympus', chain: 'ethereum', token: 'OHM', website: 'https://olympusdao.finance' },
   { snapshotSpaceId: 'instadapp-gov.eth', name: 'Instadapp', slug: 'instadapp', chain: 'ethereum', token: 'INST', website: 'https://instadapp.io' },
   { snapshotSpaceId: 'shutterdao0x36.eth', name: 'Shutter', slug: 'shutter', chain: 'ethereum', token: 'SHU', website: 'https://shutter.network' },
+  // Space id verified against hub.snapshot.org before adding, not assumed:
+  // `threshold.eth` resolves to "Threshold Network", 119 proposals. Two-body
+  // governance (Token Holder DAO + elected Council on Gnosis Safe); only the
+  // Snapshot side is covered here. No quorum is configured on the space, so
+  // quorum-risk alerting will correctly report "not published" for it.
+  { snapshotSpaceId: 'threshold.eth', name: 'Threshold Network', slug: 'threshold', chain: 'ethereum', token: 'T', website: 'https://threshold.network' },
   { snapshotSpaceId: 'aavegotchi.eth', name: 'Aavegotchi', slug: 'aavegotchi', chain: 'polygon', token: 'GHST', website: 'https://aavegotchi.com' },
   { snapshotSpaceId: 'developerdao.eth', name: 'Developer DAO', slug: 'developer-dao', chain: 'ethereum', token: 'CODE', website: 'https://developerdao.com' },
   { snapshotSpaceId: 'gearbox.eth', name: 'Gearbox', slug: 'gearbox', chain: 'ethereum', token: 'GEAR', website: 'https://gearbox.fi' },
