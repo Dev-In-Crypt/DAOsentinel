@@ -109,6 +109,7 @@ export const TRACKED_DAOS: TrackedDao[] = [
   { snapshotSpaceId: 'aavegotchi.eth', name: 'Aavegotchi', slug: 'aavegotchi', chain: 'polygon', token: 'GHST', website: 'https://aavegotchi.com' },
   { snapshotSpaceId: 'developerdao.eth', name: 'Developer DAO', slug: 'developer-dao', chain: 'ethereum', token: 'CODE', website: 'https://developerdao.com' },
   { snapshotSpaceId: 'gearbox.eth', name: 'Gearbox', slug: 'gearbox', chain: 'ethereum', token: 'GEAR', website: 'https://gearbox.fi' },
+  { snapshotSpaceId: 'sparkfi.eth', name: 'Spark', slug: 'spark', chain: 'ethereum', token: 'SPK', website: 'https://spark.fi' },
   { snapshotSpaceId: 'fei.eth', name: 'Fei', slug: 'fei', chain: 'ethereum', token: 'FEI' },
   { snapshotSpaceId: 'jonesdao.eth', name: 'Jones DAO', slug: 'jones', chain: 'arbitrum', token: 'JONES' },
   { snapshotSpaceId: 'aladdindao.eth', name: 'Aladdin DAO', slug: 'aladdin', chain: 'ethereum', token: 'ALD' },
