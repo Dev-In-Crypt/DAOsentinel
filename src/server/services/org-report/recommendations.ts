@@ -34,6 +34,7 @@
 
 import { METRIC_HINT, METRIC_LABEL, WHALE_CRITICAL_PCT } from '@/lib/constants';
 import { formatNumber, formatPct, shortenAddress } from '@/lib/utils';
+import { escapeMarkdown } from '@/lib/pdf/digest-pdf';
 import type { AddressIdentity } from './address-identity';
 import type { AttentionAlert } from './attention-alerts';
 import type { MetricContribution, ScoreAttribution, ScoreMetric } from './score-attribution';
@@ -927,13 +928,20 @@ export function formatRecommendationsSection(items: readonly Recommendation[]): 
   if (items.length === 0) return '';
 
   const blocks = items.map((r) => {
+    // `action`/`evidence` are built upstream from proposal titles the DAO's
+    // own governance space controls, quoted inline — escaped here at the
+    // render boundary (rather than at every construction site above) so
+    // `action`, wrapped in `**...**` below, can never end up with a stray
+    // `*`/`_`/`` ` `` from a title breaking the bold span.
+    const action = escapeMarkdown(r.action);
+    const evidence = escapeMarkdown(r.evidence);
     const lines = [
-      `- ${PRIORITY_MARKERS[r.priority]} **${r.action}**`,
+      `- ${PRIORITY_MARKERS[r.priority]} **${action}**`,
       // `ruleId` is deliberately NOT printed. Traceability was the point of
       // showing it, but that job is done by the evidence — which names the
       // proposal, the address and the real numbers — while the id itself is an
       // internal enum the reader cannot interpret. It stays on the object.
-      `  - **Why:** ${r.evidence}`,
+      `  - **Why:** ${evidence}`,
     ];
     // Omitted rather than blank when the item isn't time-boxed: an empty
     // "By:" reads as missing data instead of "there is no deadline".

@@ -156,6 +156,23 @@ export function sanitizeForPdf(text: string): string {
  */
 const MD_SPAN_RE = /(\*\*[^*]+?\*\*|`[^`]+?`|(?:^|(?<=\s))_[^_]+?_(?=[\s.,;:!?)]|$))/g;
 
+/**
+ * Strips the three characters this renderer treats as markdown delimiters
+ * (`*`, `_`, `` ` ``) from untrusted text — proposal titles, DAO names —
+ * before it is interpolated into a markdown string that will be tokenized.
+ *
+ * `tokenize()` has no escape-sequence support (no `\*` handling), so
+ * stripping rather than backslash-escaping is the only safe option here: a
+ * proposal title that happens to contain a literal `*` or `` ` `` would
+ * otherwise pair up with the report's own `**bold**`/`` `code` `` markers and
+ * produce visibly broken output — the exact defect this call exists to
+ * prevent. The loss is cosmetic and rare (title text almost never carries
+ * these characters).
+ */
+export function escapeMarkdown(text: string): string {
+  return text.replace(/[*_`]/g, '');
+}
+
 export function tokenize(line: string): Word[] {
   const segments = line.split(MD_SPAN_RE).filter((s) => s.length > 0);
   const words: Word[] = [];
@@ -639,12 +656,25 @@ function renderTable(layout: Layout, rows: string[][]) {
     // First cell is the row's headline; the rest are its attributes.
     layout.drawLine('•', { size: 11, gapAfter: 0 });
     layout.y += 11 * 1.35;
-    layout.drawWrapped(tokenize(`**${row[0] ?? ''}**`), { x: MARGIN + 14, size: 11 });
+    // `row[0]` is unconditionally wrapped in `**...**` below to make the
+    // headline bold — escaped defensively so a cell value that already
+    // contains `*`/`_`/`` ` `` (a table can be built from arbitrary
+    // upstream text, even when today's only caller passes a static label)
+    // can never produce mismatched markers.
+    layout.drawWrapped(tokenize(`**${escapeMarkdown(row[0] ?? '')}**`), {
+      x: MARGIN + 14,
+      size: 11,
+      align: 'justify',
+    });
 
     for (let i = 1; i < header.length; i += 1) {
       const value = row[i];
       if (!value || value === '—') continue;
-      layout.drawWrapped(tokenize(`${header[i]}: ${value}`), { x: MARGIN + 26, size: 10 });
+      layout.drawWrapped(tokenize(`${header[i]}: ${escapeMarkdown(value)}`), {
+        x: MARGIN + 26,
+        size: 10,
+        align: 'justify',
+      });
     }
   }
 }

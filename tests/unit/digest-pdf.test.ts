@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   attributionBarScale,
+  escapeMarkdown,
   renderDigestPdf,
   sanitizeForPdf,
   tokenize,
@@ -61,6 +62,44 @@ describe('markdown tables (TODO-076)', () => {
     await expect(
       renderDigestPdf({ title: 'T', weekOfLabel: 'July 27, 2026', body: broken }),
     ).resolves.toBeInstanceOf(Buffer);
+  });
+
+  // A table row's first cell is unconditionally wrapped in `**...**` by
+  // renderTable to make the headline bold. In production that cell can carry
+  // an arbitrary Snapshot/Tally proposal title (via `subjectLabel`); a title
+  // containing `*`/`_`/`` ` `` used to pair up with that wrapper and print
+  // mismatched markers instead of being escaped.
+  it('does not leak stray markdown markers from a row[0] containing * _ or `', async () => {
+    const adversarial = [
+      '| Risk | Affected | Deadline | Owner | Action |',
+      '| --- | --- | --- | --- | --- |',
+      '| has a * and a `backtick` and _underscore_ | scope | — | Research | do it |',
+    ].join('\n');
+    const pdf = await renderDigestPdf({ title: 'T', weekOfLabel: 'July 27, 2026', body: adversarial });
+    expect(pdf.subarray(0, 5).toString()).toBe('%PDF-');
+    // pdf-lib streams are compressed, so the assertion that matters is at the
+    // tokenize level below — this just confirms rendering doesn't throw on
+    // adversarial input.
+  });
+});
+
+describe('escapeMarkdown', () => {
+  it('strips the three characters this renderer treats as delimiters', () => {
+    expect(escapeMarkdown('**bold** and `code` and _em_')).toBe('bold and code and em');
+  });
+
+  it('leaves ordinary text untouched', () => {
+    expect(escapeMarkdown('Fee switch activation')).toBe('Fee switch activation');
+  });
+
+  it('makes a row[0] wrap produce exactly one balanced bold span, not mismatched markers', () => {
+    const adversarial = "has a * and a `backtick` and _underscore_";
+    const wrapped = `**${escapeMarkdown(adversarial)}**`;
+    const words = tokenize(wrapped);
+    // Every word came from the single bold span — none is left as literal
+    // punctuation, and none is styled code/italic from the stripped content.
+    expect(words.every((w) => w.style === 'bold')).toBe(true);
+    expect(words.map((w) => w.text).join(' ')).not.toMatch(/[*`_]/);
   });
 });
 

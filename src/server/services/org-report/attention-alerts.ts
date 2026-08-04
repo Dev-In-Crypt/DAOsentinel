@@ -31,6 +31,7 @@ import { db } from '../../db';
 import { alerts, proposals } from '../../db/schema';
 import { normalizeProposalTitle, shortenAddress } from '@/lib/utils';
 import { hasVotingClosed } from '@/lib/proposal-status';
+import { escapeMarkdown } from '@/lib/pdf/digest-pdf';
 
 /** Every alert type any service currently inserts. */
 export const ATTENTION_ALERT_TYPES = [
@@ -504,11 +505,14 @@ export function formatAttentionAlertsSection(items: AttentionAlert[]): string {
 function formatAlertItem(a: AttentionAlert): string {
   const marker = SEVERITY_MARKERS[a.severity] ?? '⚪';
   // Several detectors already bake the proposal title into the alert title
-  // ("⚡ Vote swing detected on <title>"); don't print it twice.
+  // ("⚡ Vote swing detected on <title>"); don't print it twice. Checked
+  // against the raw (pre-escape) title so a title containing an escaped
+  // character still matches its own alert heading.
   const showProposal = a.proposalTitle !== null && !a.title.includes(a.proposalTitle);
+  const title = escapeMarkdown(a.title);
   const heading = showProposal
-    ? `- ${marker} **${a.title}** — _${a.proposalTitle}_`
-    : `- ${marker} **${a.title}**`;
+    ? `- ${marker} **${title}** — _${escapeMarkdown(a.proposalTitle as string)}_`
+    : `- ${marker} **${title}**`;
 
   const lines = [heading, `  - **What happened:** ${a.whatHappened}`, `  - **Who:** ${a.participants}`];
 

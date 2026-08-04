@@ -14,7 +14,7 @@ import {
   users,
 } from '../db/schema';
 import { getOrGenerateOrgReport, markOrgReportSent } from './org-report/store';
-import { renderDigestPdf } from '@/lib/pdf/digest-pdf';
+import { renderDigestPdf, escapeMarkdown } from '@/lib/pdf/digest-pdf';
 
 const resend = process.env.RESEND_API_KEY ? new Resend(process.env.RESEND_API_KEY) : null;
 
@@ -222,21 +222,21 @@ Upcoming: ${JSON.stringify(data.upcoming, null, 2)}`,
 export function formatFallback(title: string, d: DigestPayload): string {
   const top = d.topProposals
     .slice(0, 5)
-    .map((p) => `- **${p.title}** (${p.dao}) — ${p.votes} votes, ${p.state}`)
+    .map((p) => `- **${escapeMarkdown(p.title)}** (${escapeMarkdown(p.dao)}) — ${p.votes} votes, ${p.state}`)
     .join('\n');
   const whales = d.whaleAlerts
     .slice(0, 4)
-    .map((w) => `- ${w.title}`)
+    .map((w) => `- ${escapeMarkdown(w.title)}`)
     .join('\n');
   const movers = d.scoreMovers
     .map(
       (m) =>
-        `- ${m.dao}: ${m.prev.toFixed(0)} → ${m.current.toFixed(0)} (${m.delta >= 0 ? '+' : ''}${m.delta.toFixed(0)})`,
+        `- ${escapeMarkdown(m.dao)}: ${m.prev.toFixed(0)} → ${m.current.toFixed(0)} (${m.delta >= 0 ? '+' : ''}${m.delta.toFixed(0)})`,
     )
     .join('\n');
   const upcoming = d.upcoming
     .slice(0, 5)
-    .map((u) => `- **${u.title}** (${u.dao}) — ends ${u.deadline.toISOString().slice(0, 10)}`)
+    .map((u) => `- **${escapeMarkdown(u.title)}** (${escapeMarkdown(u.dao)}) — ends ${u.deadline.toISOString().slice(0, 10)}`)
     .join('\n');
   return `# ${title}
 

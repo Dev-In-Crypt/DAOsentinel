@@ -50,6 +50,7 @@ import {
   SEVERE_SCORE_DROP,
   type ExecutiveSummary,
 } from './executive-summary';
+import { formatBottomLineSection, writeBottomLineProse } from './bottom-line';
 import {
   buildRecommendations,
   formatRecommendationsSection,
@@ -98,8 +99,9 @@ export interface OrgReportDao {
 export interface GenerateOrgReportOptions {
   weekOf?: Date;
   /**
-   * `false` pins the executive summary to its deterministic prose and makes no
-   * network call. Everything else in the report is deterministic already.
+   * `false` pins the executive summary AND the closing "Bottom line" paragraph
+   * to their deterministic prose and makes no network calls. Everything else
+   * in the report is deterministic already.
    */
   useAi?: boolean;
 }
@@ -140,6 +142,8 @@ export interface OrgReportSectionData {
   summary: ExecutiveSummary;
   /** Already resolved: deterministic text, or model prose that passed `proseIsSafe`. */
   summaryProse: string;
+  /** Already resolved, same contract as `summaryProse` — the report's closing paragraph. */
+  bottomLineProse: string;
   recommendations: readonly Recommendation[];
   alerts: readonly AttentionAlert[];
   upcoming: readonly UpcomingProposalItem[];
@@ -300,6 +304,7 @@ export function composeOrgReportBody(
       formatUnresolvedNotesNotice(data.unresolvedNotesCount, data.daoName),
     ),
     formatMethodologyFooter(),
+    formatBottomLineSection(data.bottomLineProse),
   ].join('');
 
   // Without a title the first section's own `\n\n` would open the document with
@@ -421,6 +426,7 @@ export async function generateOrgReport(
     recommendations,
   });
   const summaryProse = await writeExecutiveSummaryProse(summary, { useAi: opts.useAi });
+  const bottomLineProse = await writeBottomLineProse(summary, recommendations, { useAi: opts.useAi });
 
   const data: OrgReportSectionData = {
     organizationDisplayName: organization.displayName,
@@ -430,6 +436,7 @@ export async function generateOrgReport(
     weekStart,
     summary,
     summaryProse,
+    bottomLineProse,
     recommendations,
     alerts,
     upcoming,

@@ -11,6 +11,7 @@ import {
   buildExecutiveSummary,
   renderDeterministicSummary,
 } from '@/server/services/org-report/executive-summary';
+import { bottomLineFacts, renderDeterministicBottomLine } from '@/server/services/org-report/bottom-line';
 import { buildRecommendations } from '@/server/services/org-report/recommendations';
 import type { AttentionAlert } from '@/server/services/org-report/attention-alerts';
 import type { ScoreAttribution } from '@/server/services/org-report/score-attribution';
@@ -209,6 +210,7 @@ function busyData(): OrgReportSectionData {
     weekStart: WEEK_OF,
     summary,
     summaryProse: renderDeterministicSummary(summary),
+    bottomLineProse: renderDeterministicBottomLine(bottomLineFacts(summary, recommendations)),
     recommendations,
     alerts: BUSY_ALERTS,
     upcoming: BUSY_UPCOMING,
@@ -236,6 +238,7 @@ function emptyData(): OrgReportSectionData {
     weekStart: WEEK_OF,
     summary,
     summaryProse: renderDeterministicSummary(summary),
+    bottomLineProse: renderDeterministicBottomLine(bottomLineFacts(summary, recommendations)),
     recommendations,
     alerts: [],
     upcoming: [],
@@ -308,6 +311,7 @@ describe('composeOrgReportBody — a busy week', () => {
       '## 🔍 What moved the Democracy Score',
       '## 🗒️ Concierge notes',
       '## 📐 Methodology & definitions',
+      '**Bottom line.**',
     ];
     const positions = order.map((h) => body.indexOf(h));
     expect(positions.every((p) => p >= 0)).toBe(true);
@@ -338,8 +342,11 @@ describe('composeOrgReportBody — a busy week', () => {
   });
 
   it('stays inside a readable length budget', () => {
+    // Budget raised from 1500 to make room for the "Bottom line" closing
+    // paragraph (up to ~100 words per its AI prompt, deterministic fallback
+    // shorter) added after this test was first written.
     const words = body.split(/\s+/).filter(Boolean).length;
-    expect(words).toBeLessThan(1500);
+    expect(words).toBeLessThan(1600);
   });
 
   it('never opens or closes with stray blank lines', () => {

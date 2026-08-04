@@ -36,6 +36,7 @@ import { db } from '../../db';
 import { proposals } from '../../db/schema';
 import { QUORUM_RISK_THRESHOLD, QUORUM_RISK_WINDOW_ELAPSED } from '@/lib/constants';
 import { formatNumber, formatPct } from '@/lib/utils';
+import { escapeMarkdown } from '@/lib/pdf/digest-pdf';
 
 /** Matches the digest's own upcoming limit (gatherDigestData uses 8). */
 const UPCOMING_LIMIT = 8;
@@ -441,21 +442,23 @@ function formatStandingLine(standing: VoteStanding | null): string {
   if (standing == null) return 'Standing: no votes recorded yet';
 
   const share = `${formatPct(standing.leadingSharePct, 1)} of votes cast`;
+  const leadingChoice = escapeMarkdown(standing.leadingChoice);
   if (standing.runnerUpChoice == null || standing.marginPct == null) {
-    return `Leading: **${standing.leadingChoice}** — ${share} (single choice, unopposed)`;
+    return `Leading: **${leadingChoice}** — ${share} (single choice, unopposed)`;
   }
-  return `Leading: **${standing.leadingChoice}** — ${share}, +${standing.marginPct.toFixed(1)} pts over "${standing.runnerUpChoice}"`;
+  return `Leading: **${leadingChoice}** — ${share}, +${standing.marginPct.toFixed(1)} pts over "${escapeMarkdown(standing.runnerUpChoice)}"`;
 }
 
 function formatItem(item: UpcomingProposalItem): string {
+  const title = escapeMarkdown(item.title);
   if (item.phase === 'not_yet_open') {
     return [
-      `- **${item.title}** (${item.source}) — ${item.opensIn}`,
+      `- **${title}** (${item.source}) — ${item.opensIn}`,
       '  - Not yet open for voting — no quorum or standing data yet',
     ].join('\n');
   }
   return [
-    `- **${item.title}** (${item.source}) — ${item.timeLeft}`,
+    `- **${title}** (${item.source}) — ${item.timeLeft}`,
     `  - ${formatQuorumLine(item.quorum)}`,
     `  - ${formatStandingLine(item.standing)}`,
   ].join('\n');

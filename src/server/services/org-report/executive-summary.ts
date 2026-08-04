@@ -27,6 +27,7 @@
  */
 
 import { chat } from '../../ai/openrouter';
+import { escapeMarkdown } from '@/lib/pdf/digest-pdf';
 import { formatNumber, formatPct, shortenAddress } from '@/lib/utils';
 import { alertTypeCount, type AttentionAlert } from './attention-alerts';
 import type { ScoreAttribution } from './score-attribution';
@@ -824,7 +825,7 @@ export const AT_A_GLANCE_LIMIT = 3;
 
 /** Escapes the one character that would break out of a markdown table cell. */
 function cell(value: string): string {
-  return value.replace(/\|/g, '\\|').replace(/\n+/g, ' ').trim();
+  return escapeMarkdown(value).replace(/\|/g, '\\|').replace(/\n+/g, ' ').trim();
 }
 
 /**
