@@ -126,6 +126,12 @@ const TRANSLITERATE: Array<[RegExp, string]> = [
   [/×/g, 'x'],
   [/·/g, '-'],
   [/‑/g, '-'],
+  // Breadcrumb separators ("StableLab Governance › Arbitrum") — same
+  // "silently vanishes and changes the meaning" failure as the arrows above,
+  // found when a page-header mockup rendered as "Governance  Arbitrum" with
+  // no connector at all between the two words.
+  [/›/g, '>'],
+  [/‹/g, '<'],
   // Non-breaking / thin spaces collapse to a plain space rather than vanishing
   // and gluing two words together.
   [/[   ]/g, ' '],

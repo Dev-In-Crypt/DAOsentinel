@@ -116,6 +116,13 @@ describe('PDF inline formatting (TODO-079)', () => {
     expect(sanitizeForPdf('p ≈ q')).toContain('~');
   });
 
+  it('does not silently drop a breadcrumb separator', () => {
+    // Found rendering a page-header mockup as "Governance  Arbitrum" with no
+    // connector at all — › fell outside WinAnsi and had no transliteration.
+    expect(sanitizeForPdf('Governance › Arbitrum')).toBe('Governance > Arbitrum');
+    expect(sanitizeForPdf('Arbitrum ‹ Governance')).toBe('Arbitrum < Governance');
+  });
+
   it('still drops emoji, which carry no meaning here', () => {
     expect(sanitizeForPdf('🐳 Whale vote')).toBe('Whale vote');
   });
