@@ -523,8 +523,18 @@ class Layout {
         // The last line of a block is never justified — stretching it would
         // pull two trailing words to opposite margins, which is the classic
         // way justified text announces that it was done by a machine.
+        //
+        // Capped, not abandoned: a line whose ideal stretch exceeds the cap
+        // still gets the CAPPED stretch, not a reset to normal spacing. An
+        // earlier version fell all the way back to `spaceWidth` here, which
+        // for a moderately short line (a handful of words short of a full
+        // line, common for a 2-3 sentence paragraph) produced a right edge
+        // over 100pt short of the margin — closer to ragged verse than to
+        // justified prose. Clamping still protects the two-word-bullet case
+        // this constant exists for, without throwing away partial credit on
+        // everything short of that extreme.
         const stretched = (maxWidth - naturalWidth) / gaps;
-        gap = stretched > spaceWidth * MAX_SPACE_STRETCH ? spaceWidth : stretched;
+        gap = Math.min(stretched, spaceWidth * MAX_SPACE_STRETCH);
       } else if (align === 'center') {
         startX = x + Math.max(0, (maxWidth - (naturalWidth + gaps * spaceWidth)) / 2);
       }
@@ -798,7 +808,36 @@ function renderBody(layout: Layout, body: string) {
         align: 'justify',
       });
     } else {
-      layout.drawWrapped(tokenize(line), {
+      // Reflow: consume every immediately-following line that is ALSO plain
+      // paragraph text at the same nesting depth, joining with a single
+      // space before tokenizing, rather than drawing this one line alone.
+      //
+      // Without this, a hand-wrapped source paragraph (e.g. wrapped at ~80
+      // columns, or any bullet/list-item continuation past its first line)
+      // rendered each of its OWN source lines as an independent one-line
+      // call to `drawWrapped` — and the last (in this case only) line of a
+      // wrapped block is never justified by design. A three-sentence
+      // paragraph that happened to break across three source lines came out
+      // ragged-right with the last third of the page empty on every line,
+      // even though feeding it to `drawWrapped` as one continuous string
+      // would have let its own word-wrap fill the column correctly.
+      const paragraphLines = [line];
+      while (i + 1 < lines.length) {
+        const nextRaw = lines[i + 1];
+        const nextLine = nextRaw.trim();
+        if (!nextLine) break;
+        const nextDepth = Math.min(
+          Math.floor((nextRaw.length - nextRaw.trimStart().length) / 2),
+          MAX_LIST_DEPTH,
+        );
+        if (nextDepth !== depth) break;
+        if (isTableRow(nextLine) || /^-{3,}$/.test(nextLine)) break;
+        if (nextLine.startsWith('### ') || nextLine.startsWith('## ') || nextLine.startsWith('# ')) break;
+        if (nextLine.startsWith('- ') || nextLine.startsWith('* ')) break;
+        paragraphLines.push(nextLine);
+        i += 1;
+      }
+      layout.drawWrapped(tokenize(paragraphLines.join(' ')), {
         x: MARGIN + depth * INDENT_STEP,
         size: 11,
         align: 'justify',
